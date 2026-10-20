@@ -204,3 +204,8 @@ export function parseLog(log: string): LogEntry[] {
   return entries;
 }
 
+export function lineOfOffset(content: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < content.length; i++) if (content[i] === "\n") line++;
+  return line;
+}

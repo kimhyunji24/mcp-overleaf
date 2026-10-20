@@ -26,6 +26,27 @@ export interface CompileResult {
   pdfDownloadDomain?: string;
 }
 
+export interface ThreadMessage {
+  id: string;
+  content: string;
+  timestamp: number | string;
+  user_id?: string;
+  user?: { first_name?: string; last_name?: string; email?: string };
+}
+
+export interface Thread {
+  messages?: ThreadMessage[];
+  resolved?: boolean;
+  resolved_at?: string;
+}
+
+export interface DocRanges {
+  id: string;
+  ranges?: {
+    comments?: Array<{ id: string; op: { c: string; p: number; t: string } }>;
+  };
+}
+
 function decodeHtml(s: string): string {
   return s
     .replace(/&quot;|&#34;/g, '"')
@@ -198,5 +219,15 @@ export class OverleafWeb {
       }
     }
     throw new Error(`Could not fetch ${file.path}: ${lastError}`);
+  }
+
+  async getThreads(projectId: string): Promise<Record<string, Thread>> {
+    this.requireEnabled("Reading comments");
+    return this.json(`/project/${projectId}/threads`);
+  }
+
+  async getRanges(projectId: string): Promise<DocRanges[]> {
+    this.requireEnabled("Reading comments");
+    return this.json(`/project/${projectId}/ranges`);
   }
 }

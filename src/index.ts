@@ -10,6 +10,7 @@ import {
   findHeading,
   findMainFile,
   formatOutline,
+  lineOfOffset,
   parseLog,
   parseOutline,
   sectionRange,
@@ -288,6 +289,52 @@ server.registerTool(
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, data);
     return `Saved ${(data.length / 1024).toFixed(0)} KB PDF to ${target}`;
+  }),
+);
+
+server.registerTool(
+  "get_comments",
+  {
+    title: "Get review comments",
+    description:
+      "List review comment threads in the project with the commented text, file, line and replies. Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      project: projectArg,
+      include_resolved: z.boolean().optional().describe("Include resolved threads (default false)."),
+    },
+  },
+  async ({ project, include_resolved }) => run(async () => {
+    const id = await store.resolve(project);
+    const [threads, ranges] = await Promise.all([web.getThreads(id), web.getRanges(id)]);
+    const files = await store.read(id, async (co) => readAllText(co.dir)).catch(() => new Map<string, string>());
+
+    const out: string[] = [];
+    for (const doc of ranges) {
+      for (const c of doc.ranges?.comments ?? []) {
+        const thread = threads[c.op.t];
+        if (!thread || (thread.resolved && !include_resolved)) continue;
+
+        // Ranges only carry the doc ID; find the file whose text matches at the comment offset.
+        let where = `doc ${doc.id}`;
+        for (const [file, content] of files) {
+          const text = content.replace(/\r\n/g, "\n");
+          if (text.substr(c.op.p, c.op.c.length) === c.op.c) {
+            where = `${file}:${lineOfOffset(text, c.op.p)}`;
+            break;
+          }
+        }
+        const messages = (thread.messages ?? []).map((m) => {
+          const who = [m.user?.first_name, m.user?.last_name].filter(Boolean).join(" ") || m.user?.email || "unknown";
+          const when = new Date(m.timestamp).toISOString().slice(0, 16).replace("T", " ");
+          return `    ${who} (${when}): ${m.content}`;
+        });
+        out.push(
+          `- [${where}]${thread.resolved ? " (resolved)" : ""} on "${c.op.c.slice(0, 200)}"\n` +
+            `  thread ${c.op.t}\n${messages.join("\n")}`,
+        );
+      }
+    }
+    return out.length ? out.join("\n\n") : "No open comments.";
   }),
 );
 
