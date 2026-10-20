@@ -5,6 +5,7 @@ import { unzipSync } from "fflate";
 import type { Config } from "./config.js";
 import type { GitClient } from "./git.js";
 import type { OverleafWeb } from "./web.js";
+import { t } from "./i18n.js";
 
 const ID_RE = /^[0-9a-f]{24}$/i;
 /** How long a local copy is trusted before re-syncing with Overleaf on read. */
@@ -19,11 +20,11 @@ export interface Checkout {
 /** Resolve a project-relative path inside `root`, rejecting anything that escapes it. */
 export function safeJoin(root: string, rel: string): string {
   const cleaned = rel.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!cleaned || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) throw new Error(`Invalid path: ${rel}`);
+  if (!cleaned || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) throw new Error(t.invalidPath(rel));
   const full = path.resolve(root, cleaned);
   const relative = path.relative(root, full);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`Path escapes the project: ${rel}`);
-  if (relative.split(path.sep)[0] === ".git") throw new Error(`Path not allowed: ${rel}`);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(t.pathEscapes(rel));
+  if (relative.split(path.sep)[0] === ".git") throw new Error(t.pathNotAllowed(rel));
   return full;
 }
 
@@ -45,13 +46,13 @@ export class ProjectStore {
   /** Accepts a project ID, an Overleaf project URL, or (with a session cookie) a project name. */
   async resolve(ref?: string): Promise<string> {
     const r = ref?.trim() || this.cfg.defaultProject;
-    if (!r) throw new Error("No project given. Pass `project` (ID, URL or name) or set OVERLEAF_PROJECT_ID.");
+    if (!r) throw new Error(t.noProject());
     const fromUrl = r.match(/project\/([0-9a-f]{24})/i);
     if (fromUrl) return fromUrl[1].toLowerCase();
     if (ID_RE.test(r)) return r.toLowerCase();
 
     if (!this.web.enabled) {
-      throw new Error(`"${r}" is not a project ID. Looking projects up by name needs the opt-in web mode (see README); pass the project ID or URL instead.`);
+      throw new Error(t.nameNeedsWeb(r));
     }
     const projects = (await this.web.listProjects()).filter((p) => !p.trashed);
     const needle = r.toLowerCase();
@@ -59,10 +60,8 @@ export class ProjectStore {
     if (exact.length === 1) return exact[0].id;
     const partial = exact.length ? exact : projects.filter((p) => p.name.toLowerCase().includes(needle));
     if (partial.length === 1) return partial[0].id;
-    if (!partial.length) throw new Error(`No project named "${r}". Use list_projects to see available projects.`);
-    throw new Error(
-      `"${r}" matches several projects; pass the ID instead:\n` + partial.map((p) => `- ${p.name} (${p.id})`).join("\n"),
-    );
+    if (!partial.length) throw new Error(t.noProjectNamed(r));
+    throw new Error(t.ambiguousProject(r, partial.map((p) => `- ${p.name} (${p.id})`).join("\n")));
   }
 
   /** Serialize operations per project so concurrent tool calls don't trample the working copy. */
@@ -90,11 +89,11 @@ export class ProjectStore {
         // Always start a write from Overleaf's latest content.
         return { dir: await this.syncSnapshot(id, write), mode: "snapshot" };
       } catch (e) {
-        if (gitError) throw new Error(`${gitError.message}\nZip download fallback also failed: ${(e as Error).message}`);
+        if (gitError) throw new Error(t.zipFallbackFailed(gitError.message, (e as Error).message));
         throw e;
       }
     }
-    throw new Error("No credentials configured. Set OVERLEAF_GIT_TOKEN (or opt in to web mode with OVERLEAF_ENABLE_WEB=1 and OVERLEAF_SESSION_COOKIE; see README).");
+    throw new Error(t.noCredentials());
   }
 
   private async syncGit(id: string, force: boolean): Promise<string> {
@@ -146,7 +145,7 @@ export class ProjectStore {
   async save(id: string, co: Checkout, files: string[], message: string): Promise<string> {
     if (co.mode === "git") return this.git.commitAndPush(co.dir, files, message);
     for (const f of files) await this.web.uploadFile(id, f, await fs.readFile(safeJoin(co.dir, f)));
-    return `Saved to Overleaf via the web editor (no Git). Use Overleaf's History to review or undo.`;
+    return t.savedViaWeb();
   }
 }
 
@@ -170,9 +169,9 @@ export async function readText(root: string, rel: string): Promise<string> {
   try {
     buf = await fs.readFile(full);
   } catch {
-    throw new Error(`File not found: ${rel}`);
+    throw new Error(t.fileNotFound(rel));
   }
-  if (isBinary(buf)) throw new Error(`${rel} is a binary file and cannot be read as text.`);
+  if (isBinary(buf)) throw new Error(t.binaryFile(rel));
   return buf.toString("utf8");
 }
 

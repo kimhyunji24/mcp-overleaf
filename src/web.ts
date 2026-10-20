@@ -1,4 +1,5 @@
 import type { Config } from "./config.js";
+import { t } from "./i18n.js";
 import { RealtimeSession, type Entity } from "./realtime.js";
 
 export type { Entity };
@@ -89,14 +90,8 @@ export class OverleafWeb {
 
   requireEnabled(feature: string): void {
     if (this.enabled) return;
-    if (!this.cfg.webOptIn) {
-      throw new Error(
-        `${feature} needs web mode, which is off by default. Web mode uses Overleaf's internal web endpoints, ` +
-          `which may violate Overleaf's Acceptable Use Policy and could get your account suspended. ` +
-          `To use it at your own risk, set OVERLEAF_ENABLE_WEB=1 and OVERLEAF_SESSION_COOKIE. See the README.`,
-      );
-    }
-    throw new Error(`${feature} needs OVERLEAF_SESSION_COOKIE (your Overleaf browser session cookie). See the README.`);
+    if (!this.cfg.webOptIn) throw new Error(t.webOff(feature));
+    throw new Error(t.webNeedsCookie(feature));
   }
 
   private cookieHeader(): string {
@@ -124,9 +119,7 @@ export class OverleafWeb {
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location") ?? "";
       if (/\/login\b/.test(location)) {
-        throw new Error(
-          "Overleaf session cookie is invalid or expired. Copy a fresh OVERLEAF_SESSION_COOKIE from your browser.",
-        );
+        throw new Error(t.sessionExpired());
       }
       if (redirects >= 5 || !location) throw new Error(`Too many redirects fetching ${url.pathname}`);
       return this.request(new URL(location, url).toString(), init, redirects + 1);
@@ -152,7 +145,7 @@ export class OverleafWeb {
   }
 
   async listProjects(): Promise<ProjectSummary[]> {
-    this.requireEnabled("Listing projects");
+    this.requireEnabled(t.featListProjects());
     const res = await this.request("/user/projects", { headers: { Accept: "application/json" } });
     if (res.ok && res.headers.get("content-type")?.includes("json")) {
       const data = (await res.json()) as { projects?: Array<{ _id?: string; id?: string; name: string; accessLevel?: string }> };
@@ -178,14 +171,14 @@ export class OverleafWeb {
   }
 
   async downloadZip(projectId: string): Promise<Uint8Array> {
-    this.requireEnabled("Downloading a project without Git");
+    this.requireEnabled(t.featOther());
     const res = await this.request(`/project/${projectId}/download/zip`);
     if (!res.ok) throw new Error(`Downloading project ${projectId} failed: HTTP ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
   }
 
   async compile(projectId: string, opts: { draft?: boolean } = {}): Promise<CompileResult> {
-    this.requireEnabled("Compiling");
+    this.requireEnabled(t.featCompile());
     const body = JSON.stringify({
       rootDoc_id: null,
       draft: !!opts.draft,
@@ -234,7 +227,7 @@ export class OverleafWeb {
 
   /** Open a realtime session, run `fn`, and always disconnect afterwards. */
   async withRealtime<T>(projectId: string, fn: (rt: RealtimeSession) => Promise<T>): Promise<T> {
-    this.requireEnabled("This operation");
+    this.requireEnabled(t.featOther());
     const rt = await RealtimeSession.connect((p, init) => this.request(p, init), projectId);
     this.rootFolders.set(projectId, rt.rootFolderId);
     try {
@@ -309,7 +302,7 @@ export class OverleafWeb {
    * Intermediate folders in `relPath` are created by Overleaf as needed.
    */
   async uploadFile(projectId: string, relPath: string, data: Uint8Array): Promise<void> {
-    this.requireEnabled("Saving without Git");
+    this.requireEnabled(t.featOther());
     const folderId = await this.getRootFolderId(projectId);
     const name = relPath.split("/").pop()!;
     for (const refresh of [false, true]) {
@@ -332,13 +325,19 @@ export class OverleafWeb {
     throw new Error(`Uploading ${relPath} was rejected (HTTP 403).`);
   }
 
+  /** Change project settings such as the compiler ("pdflatex", "xelatex", "lualatex", "latex"). */
+  async setCompiler(projectId: string, compiler: string): Promise<void> {
+    this.requireEnabled(t.featSettings());
+    await this.send("POST", `/project/${projectId}/settings`, { compiler });
+  }
+
   async getThreads(projectId: string): Promise<Record<string, Thread>> {
-    this.requireEnabled("Reading comments");
+    this.requireEnabled(t.featComments());
     return this.json(`/project/${projectId}/threads`);
   }
 
   async getRanges(projectId: string): Promise<DocRanges[]> {
-    this.requireEnabled("Reading comments");
+    this.requireEnabled(t.featComments());
     return this.json(`/project/${projectId}/ranges`);
   }
 }

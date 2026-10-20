@@ -1,4 +1,5 @@
-import { findHeading, findMainFile, parseOutline, sectionRange } from "./latex.js";
+import { t } from "./i18n.js";
+import { containsHangul, findHeading, findMainFile, hasKoreanSupport, parseOutline, sectionRange } from "./latex.js";
 import { HEADING_COMMANDS, markdownToLatex } from "./markdown.js";
 
 export interface ApplyOptions {
@@ -17,6 +18,14 @@ export interface ApplyPlan {
   latex: string;
   description: string;
   missingPackages: string[];
+  /** The text is Korean but the preamble has no Korean support (kotex etc.). */
+  needsKorean: boolean;
+}
+
+function needsKorean(files: Map<string, string>, markdown: string): boolean {
+  if (!containsHangul(markdown)) return false;
+  const main = findMainFile(files);
+  return !!main && !hasKoreanSupport((files.get(main) ?? "").split(/\\begin\{document\}/)[0]);
 }
 
 const HEADING_START = new RegExp(`^\\\\(${HEADING_COMMANDS.join("|")})\\*?\\{`);
@@ -67,16 +76,18 @@ export function planMarkdownWrite(files: Map<string, string>, opts: ApplyOptions
       file: h.file,
       content,
       latex,
-      description: `Replaced section "${h.title}" (${h.file} lines ${h.line}-${end})${replacesHeading ? " including its heading" : ""}`,
+      description: t.planSection(h.title, h.file, h.line, end, replacesHeading),
       missingPackages: missingPackages(files, packages),
+      needsKorean: needsKorean(files, opts.markdown),
     };
   }
 
-  if (!opts.path) throw new Error("Pass `path` (target .tex file) or `section` (existing section to replace).");
-  if (!/\.(tex|ltx)$/i.test(opts.path)) throw new Error(`Target should be a .tex file, got ${opts.path}`);
+  if (!opts.path) throw new Error(t.markdownTarget());
+  if (!/\.(tex|ltx)$/i.test(opts.path)) throw new Error(t.notTexTarget(opts.path));
   const { latex, packages } = markdownToLatex(opts.markdown, { topLevel: opts.topLevel ?? "section" });
   const existing = files.get(opts.path);
   const missing = missingPackages(files, packages);
+  const korean = needsKorean(files, opts.markdown);
 
   if (opts.mode === "append" && existing !== undefined) {
     const eol = existing.includes("\r\n") ? "\r\n" : "\n";
@@ -86,20 +97,18 @@ export function planMarkdownWrite(files: Map<string, string>, opts: ApplyOptions
       endDoc >= 0
         ? existing.slice(0, endDoc).replace(/\s*$/, eol + eol) + insert + eol + existing.slice(endDoc)
         : existing.replace(/\s*$/, eol + eol) + insert;
-    return { file: opts.path, content, latex, description: `Appended to ${opts.path}`, missingPackages: missing };
+    return { file: opts.path, content, latex, description: t.planAppend(opts.path), missingPackages: missing, needsKorean: korean };
   }
 
   if (existing !== undefined && /^[^%\n]*\\documentclass/m.test(existing)) {
-    throw new Error(
-      `${opts.path} is the main file (it has \\documentclass); overwriting it would delete the preamble. ` +
-        `Write to a separate file (e.g. sections/intro.tex and \\input it), replace a \`section\`, or use mode "append".`,
-    );
+    throw new Error(t.mainFileOverwrite(opts.path));
   }
   return {
     file: opts.path,
     content: latex,
     latex,
-    description: `${existing === undefined ? "Created" : "Overwrote"} ${opts.path}`,
+    description: t.planCreate(opts.path, existing !== undefined),
     missingPackages: missing,
+    needsKorean: korean,
   };
 }

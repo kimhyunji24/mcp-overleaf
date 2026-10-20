@@ -1,4 +1,5 @@
 import path from "node:path";
+import { t } from "./i18n.js";
 
 const LEVELS: Record<string, number> = {
   part: -1,
@@ -93,7 +94,7 @@ export function parseOutline(files: Map<string, string>, mainFile?: string): Hea
 }
 
 export function formatOutline(headings: Heading[]): string {
-  if (!headings.length) return "No sectioning commands found.";
+  if (!headings.length) return t.noHeadings();
   const min = Math.min(...headings.map((h) => h.level));
   return headings
     .map((h) => `${"  ".repeat(h.level - min)}- ${h.title}  [\\${h.command}, ${h.file}:${h.line}]`)
@@ -106,11 +107,8 @@ export function findHeading(headings: Heading[], title: string, file?: string): 
   const exact = pool.filter((h) => h.title.toLowerCase() === needle);
   const matches = exact.length ? exact : pool.filter((h) => h.title.toLowerCase().includes(needle));
   if (matches.length === 1) return matches[0];
-  if (!matches.length) throw new Error(`No section matching "${title}". Use get_outline to see section titles.`);
-  throw new Error(
-    `"${title}" matches several sections; be more specific or pass \`file\`:\n` +
-      matches.map((h) => `- ${h.title} (${h.file}:${h.line})`).join("\n"),
-  );
+  if (!matches.length) throw new Error(t.noSection(title));
+  throw new Error(t.ambiguousSection(title, matches.map((h) => `- ${h.title} (${h.file}:${h.line})`).join("\n")));
 }
 
 /** Lines of a section: from its heading up to the next heading of the same or higher level in the same file. */
@@ -202,6 +200,39 @@ export function parseLog(log: string): LogEntry[] {
     }
   }
   return entries;
+}
+
+const HANGUL_RE = /[ᄀ-ᇿ㄰-㆏가-힣]/;
+
+export function containsHangul(text: string): boolean {
+  return HANGUL_RE.test(text);
+}
+
+/** Does the preamble already load something that typesets Korean? */
+export function hasKoreanSupport(preamble: string): boolean {
+  return /\\usepackage\s*(\[[^\]]*\])?\s*\{[^}]*\b(kotex|xetexko|luatexko|xeCJK|CJKutf8|CJK)\b/.test(preamble);
+}
+
+/** Compile errors such as "Unicode character 한 (U+D55C) not set up for use with LaTeX". */
+export function hasHangulErrors(entries: LogEntry[]): boolean {
+  return entries.some((e) => {
+    if (e.level !== "error") return false;
+    const code = e.message.match(/\(U\+([0-9A-F]{4,5})\)/i);
+    return code ? containsHangul(String.fromCodePoint(parseInt(code[1], 16))) : containsHangul(e.message);
+  });
+}
+
+/** Insert \usepackage{pkg} after the last \usepackage in the preamble (or after \documentclass). */
+export function addPackage(content: string, pkg: string): string {
+  const lines = content.split("\n");
+  const begin = lines.findIndex((l) => /^\s*\\begin\{document\}/.test(l));
+  const preambleEnd = begin === -1 ? lines.length : begin;
+  let at = -1;
+  for (let i = 0; i < preambleEnd; i++) if (/^\s*\\usepackage/.test(lines[i])) at = i;
+  if (at === -1) at = lines.findIndex((l) => /^\s*\\documentclass/.test(l));
+  const eol = lines[Math.max(at, 0)]?.endsWith("\r") ? "\r" : "";
+  lines.splice(at + 1, 0, `\\usepackage{${pkg}}${eol}`);
+  return lines.join("\n");
 }
 
 export function lineOfOffset(content: string, offset: number): number {

@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { parseLang, type Lang } from "./i18n.js";
 
 export interface Config {
   /** Overleaf web origin, e.g. https://www.overleaf.com or a self-hosted instance. */
@@ -14,6 +15,8 @@ export interface Config {
    * which may conflict with Overleaf's Acceptable Use Policy, so a cookie alone never turns it on.
    */
   webOptIn: boolean;
+  /** Language of tool responses (OVERLEAF_LANG=en|ko). */
+  lang: Lang;
   defaultProject?: string;
   cacheDir: string;
   authorName: string;
@@ -34,6 +37,7 @@ export function loadConfig(): Config {
     // A bare value is assumed to be overleaf.com's session cookie; pass "name=value" for other instances.
     sessionCookie: cookie && !cookie.includes("=") ? `overleaf_session2=${cookie}` : cookie,
     webOptIn: /^(1|true|yes|on)$/i.test(env("OVERLEAF_ENABLE_WEB") ?? ""),
+    lang: parseLang(env("OVERLEAF_LANG")),
     defaultProject: env("OVERLEAF_PROJECT_ID"),
     cacheDir: env("OVERLEAF_MCP_CACHE_DIR") ?? path.join(os.homedir(), ".mcp-overleaf"),
     authorName: env("OVERLEAF_GIT_AUTHOR_NAME") ?? "Overleaf MCP",

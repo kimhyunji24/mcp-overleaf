@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Config } from "./config.js";
+import { t } from "./i18n.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -39,15 +40,13 @@ export class GitClient {
       return stdout;
     } catch (e) {
       const err = e as { stderr?: string; message: string; code?: string };
-      if (err.code === "ENOENT") throw new Error("git is not installed or not on PATH.");
+      if (err.code === "ENOENT") throw new Error(t.gitMissing());
       let detail = (err.stderr || err.message).trim();
       if (this.cfg.gitToken) detail = detail.split(this.cfg.gitToken).join("***");
       if (/no git access/i.test(detail)) {
-        detail +=
-          "\nOverleaf Git integration needs the project owner to have a paid or institutional plan." +
-          " Without it, the only alternative is the opt-in web mode; read the README for its risks first.";
+        detail += `\n${t.gitNoAccess()}`;
       } else if (/401|403|Authentication failed|could not read Username/i.test(detail)) {
-        detail += "\nCheck OVERLEAF_GIT_TOKEN. Overleaf Git integration requires a paid plan (or institutional access).";
+        detail += `\n${t.gitAuth()}`;
       }
       throw new Error(`git ${args[0]} failed: ${detail}`);
     }
@@ -66,7 +65,7 @@ export class GitClient {
       await this.run(["rebase", "--abort"], dir).catch(() => {});
       await this.run(["fetch", "--quiet"], dir);
       await this.run(["reset", "--hard", "--quiet", "@{u}"], dir);
-      throw new Error(`${(e as Error).message}\nLocal copy was reset to match Overleaf; please retry.`);
+      throw new Error(t.gitResetRetry((e as Error).message));
     }
   }
 
@@ -74,7 +73,7 @@ export class GitClient {
   async commitAndPush(dir: string, paths: string[], message: string): Promise<string> {
     await this.run(["add", "--all", "--", ...paths], dir);
     const status = await this.run(["status", "--porcelain"], dir);
-    if (!status.trim()) return "No changes to commit (file already had this content).";
+    if (!status.trim()) return t.gitNothingToCommit();
 
     await this.run(
       ["-c", `user.name=${this.cfg.authorName}`, "-c", `user.email=${this.cfg.authorEmail}`, "commit", "--quiet", "-m", message],
@@ -91,10 +90,10 @@ export class GitClient {
         await this.run(["rebase", "--abort"], dir).catch(() => {});
         await this.run(["fetch", "--quiet"], dir).catch(() => {});
         await this.run(["reset", "--hard", "--quiet", "@{u}"], dir).catch(() => {});
-        throw new Error(`Could not push to Overleaf; your change was NOT saved. ${(e as Error).message}`);
+        throw new Error(t.gitPushFailed((e as Error).message));
       }
     }
     const sha = (await this.run(["rev-parse", "--short", "HEAD"], dir)).trim();
-    return `Committed and pushed ${sha} to Overleaf.`;
+    return t.gitPushed(sha);
   }
 }

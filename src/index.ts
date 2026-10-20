@@ -9,10 +9,14 @@ import { z } from "zod";
 import { planMarkdownWrite, type ApplyPlan } from "./apply.js";
 import { loadConfig } from "./config.js";
 import { GitClient } from "./git.js";
+import { setLang, t } from "./i18n.js";
 import {
+  addPackage,
   findHeading,
   findMainFile,
   formatOutline,
+  hasHangulErrors,
+  hasKoreanSupport,
   lineOfOffset,
   parseLog,
   parseOutline,
@@ -25,6 +29,7 @@ import { OverleafWeb, type CompileResult } from "./web.js";
 const VERSION = "0.1.0";
 
 const cfg = loadConfig();
+setLang(cfg.lang);
 const web = new OverleafWeb(cfg);
 const git = new GitClient(cfg);
 const store = new ProjectStore(cfg, web, git);
@@ -59,7 +64,7 @@ server.registerTool(
   },
   async ({ include_archived }) => run(async () => {
     const projects = (await web.listProjects()).filter((p) => include_archived || (!p.archived && !p.trashed));
-    if (!projects.length) return "No projects found.";
+    if (!projects.length) return t.noProjectsFound();
     return projects
       .map((p) => {
         const extra = [p.accessLevel, p.lastUpdated && `updated ${p.lastUpdated}`, p.archived && "archived", p.trashed && "trashed"];
@@ -81,7 +86,7 @@ server.registerTool(
     const id = await store.resolve(project);
     return store.read(id, async (co) => {
       const files = await listFiles(co.dir);
-      return (files.length ? files.join("\n") : "(empty project)");
+      return files.length ? files.join("\n") : t.emptyProject();
     });
   }),
 );
@@ -106,7 +111,7 @@ server.registerTool(
       const lines = content.split(/\r?\n/);
       const start = start_line ?? 1;
       const end = Math.min(end_line ?? lines.length, lines.length);
-      return `[${rel} lines ${start}-${end} of ${lines.length}]\n` + lines.slice(start - 1, end).join("\n");
+      return `${t.lineRange(rel, start, end, lines.length)}\n` + lines.slice(start - 1, end).join("\n");
     });
   }),
 );
@@ -127,7 +132,7 @@ server.registerTool(
     return store.read(id, async (co) => {
       const files = await readAllText(co.dir);
       const main = main_file ?? findMainFile(files);
-      return `Main file: ${main ?? "(not found)"}\n\n` + formatOutline(parseOutline(files, main));
+      return `${t.mainFile(main)}\n\n` + formatOutline(parseOutline(files, main));
     });
   }),
 );
@@ -152,7 +157,7 @@ server.registerTool(
       const content = files.get(h.file) ?? "";
       const { start, end } = sectionRange(headings, h, content);
       const body = content.split(/\r?\n/).slice(start - 1, end).join("\n");
-      return `[${h.file} lines ${start}-${end}]\n${body}`;
+      return `${t.lineRange(h.file, start, end)}\n${body}`;
     });
   }),
 );
@@ -206,15 +211,13 @@ server.registerTool(
       const text = norm(content);
       const oldS = norm(old_string);
       const count = text.split(oldS).length - 1;
-      if (count === 0) throw new Error(`old_string not found in ${rel}. Read the file again; it may have changed on Overleaf.`);
-      if (count > 1 && !replace_all) {
-        throw new Error(`old_string occurs ${count} times in ${rel}. Add surrounding context to make it unique, or set replace_all.`);
-      }
+      if (count === 0) throw new Error(t.oldNotFound(rel));
+      if (count > 1 && !replace_all) throw new Error(t.oldAmbiguous(count, rel));
       let updated = replace_all ? text.split(oldS).join(norm(new_string)) : text.replace(oldS, () => norm(new_string));
       if (crlf) updated = updated.replace(/\n/g, "\r\n");
       await fs.writeFile(safeJoin(co.dir, rel), updated, "utf8");
       const result = await store.save(id, co, [rel], commit_message ?? `Edit ${rel} via mcp-overleaf`);
-      return `Replaced ${replace_all ? count : 1} occurrence(s) in ${rel}. ${result}`;
+      return t.replaced(replace_all ? count : 1, rel, result);
     });
   }),
 );
@@ -252,17 +255,16 @@ server.registerTool(
   },
   async ({ project, markdown, md_path, path: rel, section, mode, top_level, dry_run, commit_message }) =>
     run(async () => {
-      if ((markdown === undefined) === (md_path === undefined)) throw new Error("Pass exactly one of `markdown` or `md_path`.");
+      if ((markdown === undefined) === (md_path === undefined)) throw new Error(t.markdownSource());
       const source = markdown ?? (await fs.readFile(path.resolve(md_path!), "utf8"));
       const opts = { markdown: source, path: rel, section, mode, topLevel: top_level };
 
       const report = (plan: ApplyPlan, result?: string) => {
-        const parts = [dry_run ? `Dry run — would apply: ${plan.description}` : `${plan.description}. ${result}`];
+        const parts = [dry_run ? t.dryRun(plan.description) : t.planDone(plan.description, result ?? "")];
         if (plan.missingPackages.length) {
-          parts.push(
-            `Note: the preamble does not load ${plan.missingPackages.map((p) => `\\usepackage{${p}}`).join(", ")}; add it or compilation may fail.`,
-          );
+          parts.push(t.missingPackages(plan.missingPackages.map((p) => `\\usepackage{${p}}`).join(", ")));
         }
+        if (plan.needsKorean) parts.push(t.koreanSetupHint());
         if (dry_run) parts.push(`\n${plan.latex}`);
         return parts.join("\n");
       };
@@ -308,15 +310,15 @@ server.registerTool(
       return store.write(id, async (co) => {
         const full = safeJoin(co.dir, target);
         if (co.mode === "git") {
-          if (!existsSync(full)) throw new Error(`Not found in project: ${target}`);
+          if (!existsSync(full)) throw new Error(t.notFoundInProject(target));
           await git.run(["rm", "-r", "--quiet", "--", target], co.dir);
-          return `Deleted ${target}. ${await git.commitAndPush(co.dir, [target], commit_message ?? `Delete ${target} via mcp-overleaf`)}`;
+          return t.deleted(target, await git.commitAndPush(co.dir, [target], commit_message ?? `Delete ${target} via mcp-overleaf`));
         }
         const entity = (await web.getEntities(id)).get(target);
-        if (!entity) throw new Error(`Not found in project: ${target}`);
+        if (!entity) throw new Error(t.notFoundInProject(target));
         await web.deleteEntity(id, entity);
         store.invalidate(id);
-        return `Deleted ${entity.type === "folder" ? "folder" : "file"} ${target} on Overleaf (restorable from History).`;
+        return t.deletedWeb(entity.type === "folder", target);
       });
     }),
 );
@@ -339,7 +341,7 @@ server.registerTool(
       const id = await store.resolve(project);
       const from = normPath(rel);
       const to = normPath(new_path);
-      if (from === to) throw new Error("path and new_path are the same.");
+      if (from === to) throw new Error(t.samePath());
       return store.write(id, async (co) => {
         safeJoin(co.dir, from);
         const toFull = safeJoin(co.dir, to);
@@ -347,13 +349,13 @@ server.registerTool(
           await fs.mkdir(path.dirname(toFull), { recursive: true });
           await git.run(["mv", "--", from, to], co.dir);
           const result = await git.commitAndPush(co.dir, [from, to], commit_message ?? `Move ${from} to ${to} via mcp-overleaf`);
-          return `Moved ${from} → ${to}. ${result}`;
+          return t.moved(from, to, result);
         }
 
         const entities = await web.getEntities(id);
         const entity = entities.get(from);
-        if (!entity) throw new Error(`Not found in project: ${from}`);
-        if (entities.has(to)) throw new Error(`${to} already exists.`);
+        if (!entity) throw new Error(t.notFoundInProject(from));
+        if (entities.has(to)) throw new Error(t.alreadyExists(to));
 
         const fromDir = path.posix.dirname(from);
         const toDir = path.posix.dirname(to);
@@ -364,7 +366,7 @@ server.registerTool(
           for (const seg of toDir === "." ? [] : toDir.split("/")) {
             prefix = prefix ? `${prefix}/${seg}` : seg;
             const existing = entities.get(prefix);
-            if (existing && existing.type !== "folder") throw new Error(`${prefix} is a file, not a folder.`);
+            if (existing && existing.type !== "folder") throw new Error(t.notAFolder(prefix));
             folderId = existing?.id ?? (await web.createFolder(id, folderId, seg));
           }
           await web.moveEntity(id, entity, folderId);
@@ -373,7 +375,7 @@ server.registerTool(
           await web.renameEntity(id, entity, path.posix.basename(to));
         }
         store.invalidate(id);
-        return `Moved ${from} → ${to} on Overleaf.`;
+        return t.moved(from, to);
       });
     }),
 );
@@ -404,22 +406,20 @@ server.registerTool(
       const anchor = text.replace(/\r\n/g, "\n");
       return web.withRealtime(id, async (rt) => {
         const entity = rt.entities.get(target);
-        if (!entity || entity.type !== "doc") throw new Error(`${target} is not an editable text file in this project.`);
+        if (!entity || entity.type !== "doc") throw new Error(t.notEditableDoc(target));
         const doc = await rt.joinDoc(entity.id);
         try {
           const positions: number[] = [];
           for (let i = doc.text.indexOf(anchor); i !== -1; i = doc.text.indexOf(anchor, i + 1)) positions.push(i);
-          if (!positions.length) throw new Error(`Passage not found in ${target}. Read the file and copy the text exactly.`);
-          if (positions.length > 1 && !occurrence) {
-            throw new Error(`Passage occurs ${positions.length} times in ${target}; pass a longer passage or \`occurrence\`.`);
-          }
+          if (!positions.length) throw new Error(t.passageNotFound(target));
+          if (positions.length > 1 && !occurrence) throw new Error(t.passageAmbiguous(positions.length, target));
           const p = positions[(occurrence ?? 1) - 1];
-          if (p === undefined) throw new Error(`Only ${positions.length} occurrence(s) found.`);
+          if (p === undefined) throw new Error(t.onlyOccurrences(positions.length));
 
           const threadId = newThreadId();
           await web.postThreadMessage(id, threadId, comment);
           await rt.applyOps(entity.id, doc.version, [{ c: anchor, p, t: threadId }]);
-          return `Added comment on ${target}:${lineOfOffset(doc.text, p)} "${anchor.slice(0, 80)}" (thread ${threadId}).`;
+          return t.commentAdded(`${target}:${lineOfOffset(doc.text, p)}`, anchor.slice(0, 80), threadId);
         } finally {
           await rt.leaveDoc(entity.id);
         }
@@ -442,9 +442,9 @@ server.registerTool(
     run(async () => {
       const id = await store.resolve(project);
       const threads = await web.getThreads(id);
-      if (!threads[thread_id]) throw new Error(`No comment thread ${thread_id}. Use get_comments to list threads.`);
+      if (!threads[thread_id]) throw new Error(t.noThread(thread_id));
       await web.postThreadMessage(id, thread_id, content);
-      return `Replied to thread ${thread_id}.`;
+      return t.replied(thread_id);
     }),
 );
 
@@ -463,9 +463,9 @@ server.registerTool(
     run(async () => {
       const id = await store.resolve(project);
       const doc = (await web.getRanges(id)).find((d) => d.ranges?.comments?.some((c) => c.op.t === thread_id));
-      if (!doc) throw new Error(`No comment thread ${thread_id} is attached to any document.`);
+      if (!doc) throw new Error(t.threadNotAttached(thread_id));
       await web.setThreadResolved(id, doc.id, thread_id, !reopen);
-      return `${reopen ? "Reopened" : "Resolved"} thread ${thread_id}.`;
+      return t.resolved(!!reopen, thread_id);
     }),
 );
 
@@ -474,7 +474,7 @@ function formatEntries(entries: LogEntry[], limit: number): string {
     const loc = e.file ? `${e.file}${e.line ? `:${e.line}` : ""}` : e.line ? `line ${e.line}` : "";
     return `- ${loc ? `[${loc}] ` : ""}${e.message}`;
   });
-  if (entries.length > limit) shown.push(`- ... and ${entries.length - limit} more`);
+  if (entries.length > limit) shown.push(t.andMore(entries.length - limit));
   return shown.join("\n");
 }
 
@@ -508,17 +508,15 @@ server.registerTool(
     const badboxes = entries.filter((e) => e.level === "badbox");
     const hasPdf = result.outputFiles.some((f) => f.path === "output.pdf");
 
-    const parts = [
-      `Status: ${result.status}${hasPdf ? " (PDF produced)" : " (no PDF)"}`,
-      `Errors: ${errors.length}, warnings: ${warnings.length}, bad boxes: ${badboxes.length}`,
-    ];
-    if (result.status === "timedout") parts.push("The compile timed out. Try draft mode or check for heavy figures.");
-    if (result.status === "too-recently-compiled") parts.push("Overleaf rate-limited this compile; wait a few seconds and retry.");
-    if (errors.length) parts.push(`\nErrors:\n${formatEntries(errors, 50)}`);
-    if (include_warnings && warnings.length) parts.push(`\nWarnings:\n${formatEntries(warnings, 40)}`);
-    if (include_badboxes && badboxes.length) parts.push(`\nBad boxes:\n${formatEntries(badboxes, 40)}`);
-    if (raw_log_lines > 0) parts.push(`\nLog tail:\n${log.split(/\r?\n/).slice(-raw_log_lines).join("\n")}`);
-    if (!log) parts.push("\n(No log file was returned.)");
+    const parts = [t.compileStatus(result.status, hasPdf), t.compileCounts(errors.length, warnings.length, badboxes.length)];
+    if (result.status === "timedout") parts.push(t.compileTimeout());
+    if (result.status === "too-recently-compiled") parts.push(t.compileRateLimited());
+    if (hasHangulErrors(entries)) parts.push(t.koreanCompileHint());
+    if (errors.length) parts.push(`\n${t.errorsHeader()}\n${formatEntries(errors, 50)}`);
+    if (include_warnings && warnings.length) parts.push(`\n${t.warningsHeader()}\n${formatEntries(warnings, 40)}`);
+    if (include_badboxes && badboxes.length) parts.push(`\n${t.badboxesHeader()}\n${formatEntries(badboxes, 40)}`);
+    if (raw_log_lines > 0) parts.push(`\n${t.logTailHeader()}\n${log.split(/\r?\n/).slice(-raw_log_lines).join("\n")}`);
+    if (!log) parts.push(`\n${t.noLog()}`);
     return parts.join("\n");
   }),
 );
@@ -537,12 +535,12 @@ server.registerTool(
     const id = await store.resolve(project);
     const result = await web.compile(id);
     const pdf = result.outputFiles.find((f) => f.path === "output.pdf");
-    if (!pdf) throw new Error(`Compile finished with status "${result.status}" and produced no PDF. Run compile to see errors.`);
+    if (!pdf) throw new Error(t.noPdf(result.status));
     const data = Buffer.from(await (await web.fetchOutputFile(result, pdf)).arrayBuffer());
     const target = path.resolve(output_path ?? path.join(cfg.cacheDir, "pdf", `${id}.pdf`));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, data);
-    return `Saved ${(data.length / 1024).toFixed(0)} KB PDF to ${target}`;
+    return t.pdfSaved((data.length / 1024).toFixed(0), target);
   }),
 );
 
@@ -583,30 +581,64 @@ server.registerTool(
           return `    ${who} (${when}): ${m.content}`;
         });
         out.push(
-          `- [${where}]${thread.resolved ? " (resolved)" : ""} on "${c.op.c.slice(0, 200)}"\n` +
-            `  thread ${c.op.t}\n${messages.join("\n")}`,
+          `- [${where}]${thread.resolved ? t.resolvedTag() : ""} "${c.op.c.slice(0, 200)}"\n` +
+            `  ${t.threadLabel(c.op.t)}\n${messages.join("\n")}`,
         );
       }
     }
-    return out.length ? out.join("\n\n") : "No open comments.";
+    return out.length ? out.join("\n\n") : t.noOpenComments();
   }),
 );
 
+server.registerTool(
+  "setup_paper_language",
+  {
+    title: "Set up the paper language",
+    description:
+      "Prepare the project for writing in Korean or English. For \"ko\": adds \\usepackage{kotex} to the main file's preamble " +
+      "(if no Korean package is loaded yet) and switches the compiler to XeLaTeX (needs the opt-in web mode; otherwise it says how to " +
+      "do it in Overleaf). For \"en\": reports that no setup is needed. Run this before writing Korean text, or when compile " +
+      "reports \"Unicode character\" errors for Korean.",
+    inputSchema: {
+      project: projectArg,
+      language: z.enum(["ko", "en"]).describe("Paper language."),
+      main_file: z.string().optional().describe("Main .tex file. Detected automatically if omitted."),
+    },
+  },
+  async ({ project, language, main_file }) =>
+    run(async () => {
+      if (language === "en") return t.englishSetup();
+      const id = await store.resolve(project);
+      const parts: string[] = [];
+      await store.write(id, async (co) => {
+        const files = await readAllText(co.dir);
+        const main = main_file ?? findMainFile(files);
+        if (!main || !files.has(main)) throw new Error(t.noMainFile());
+        const content = files.get(main)!;
+        if (hasKoreanSupport(content.split(/\\begin\{document\}/)[0])) {
+          parts.push(t.koreanAlreadySet(main));
+          return;
+        }
+        await fs.writeFile(safeJoin(co.dir, main), addPackage(content, "kotex"), "utf8");
+        parts.push(t.kotexAdded(main, await store.save(id, co, [main], `Add kotex for Korean via mcp-overleaf`)));
+      });
+      if (web.enabled) {
+        await web.setCompiler(id, "xelatex");
+        parts.push(t.compilerSet("XeLaTeX"));
+      } else {
+        parts.push(t.compilerManual("XeLaTeX"));
+      }
+      return parts.join("\n");
+    }),
+);
+
 async function main(): Promise<void> {
-  if (web.enabled) {
-    console.error(
-      "mcp-overleaf: web mode is ON. It uses Overleaf's internal web endpoints, which are not a publicly supported interface " +
-        "and may violate Overleaf's Acceptable Use Policy; your account could be suspended. Use at your own risk.",
-    );
-  } else if (cfg.sessionCookie) {
-    console.error("mcp-overleaf: OVERLEAF_SESSION_COOKIE is set but ignored because web mode is off (set OVERLEAF_ENABLE_WEB=1 to opt in).");
-  }
-  if (!cfg.gitToken && !web.enabled) {
-    console.error("mcp-overleaf: warning: OVERLEAF_GIT_TOKEN is not set; only write_markdown dry runs will work.");
-  }
+  if (web.enabled) console.error(t.startWebOn());
+  else if (cfg.sessionCookie) console.error(t.startCookieIgnored());
+  if (!cfg.gitToken && !web.enabled) console.error(t.startNoGit());
   await server.connect(new StdioServerTransport());
   console.error(
-    `mcp-overleaf ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web mode: ${web.enabled ? "on" : "off"})`,
+    `mcp-overleaf ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web mode: ${web.enabled ? "on" : "off"}, lang: ${cfg.lang})`,
   );
 }
 

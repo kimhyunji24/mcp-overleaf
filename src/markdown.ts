@@ -412,7 +412,8 @@ function inline(src: string, ctx: Ctx): string {
     return hold(`\\cite${opt}{${keys.join(",")}}`);
   });
   // Cross references
-  s = s.replace(/(?<![\w@])@((?:fig|sec|eq|tbl|tab|lst|thm|lem|def|app):[\w:.\-]+?)(?=[.,;:)]?(?:\s|$))/g, (_, label: string) =>
+  // Labels end at the last word character, so Korean particles can follow directly: "@fig:arch를".
+  s = s.replace(/(?<![\w@])@((?:fig|sec|eq|tbl|tab|lst|thm|lem|def|app):[\w:.\-]*\w)/g, (_, label: string) =>
     hold(`\\ref{${label}}`),
   );
   // Bare citations @key in text
