@@ -45,14 +45,14 @@ async function run(fn: () => Promise<string>): Promise<ToolResult> {
 const projectArg = z
   .string()
   .optional()
-  .describe("Project ID, Overleaf project URL, or project name. Defaults to OVERLEAF_PROJECT_ID.");
+  .describe("Project ID or Overleaf project URL (or project name in web mode). Defaults to OVERLEAF_PROJECT_ID.");
 
 
 server.registerTool(
   "list_projects",
   {
     title: "List Overleaf projects",
-    description: "List the Overleaf projects in your account with their IDs. Requires OVERLEAF_SESSION_COOKIE.",
+    description: "List the Overleaf projects in your account with their IDs. Web mode only (opt-in, see README).",
     inputSchema: {
       include_archived: z.boolean().optional().describe("Also list archived and trashed projects."),
     },
@@ -162,7 +162,7 @@ server.registerTool(
   {
     title: "Write a file",
     description:
-      "Create or overwrite a file in the Overleaf project and save it to Overleaf. Prefer edit_file for changing part of an existing file. Uses Git when available, otherwise the web session cookie.",
+      "Create or overwrite a file in the Overleaf project and save it to Overleaf. Prefer edit_file for changing part of an existing file. Uses Git; falls back to the opt-in web mode if enabled.",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("Path relative to the project root."),
@@ -186,7 +186,7 @@ server.registerTool(
   {
     title: "Edit a file",
     description:
-      "Replace an exact string in a project file and save it to Overleaf. old_string must match exactly once unless replace_all is set. Uses Git when available, otherwise the web session cookie.",
+      "Replace an exact string in a project file and save it to Overleaf. old_string must match exactly once unless replace_all is set. Uses Git; falls back to the opt-in web mode if enabled.",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("Path relative to the project root."),
@@ -229,7 +229,7 @@ server.registerTool(
       "$math$ and $$display$$ ({#eq:label}), citations [@key; @key2, p. 3], cross refs @fig:x/@sec:x/@eq:x/@tbl:x, " +
       "figures ![caption](img.png){#fig:x width=60%}, pipe tables with 'Table: caption {#tbl:x}', footnotes, lists, code, " +
       "and raw LaTeX (\\commands and \\begin..\\end blocks pass through). Set dry_run to preview the LaTeX first. " +
-      "Writing uses Git when available, otherwise the web session cookie.",
+      "Writing uses Git; falls back to the opt-in web mode if enabled.",
     inputSchema: {
       project: projectArg,
       markdown: z.string().optional().describe("Markdown text. Use this or md_path."),
@@ -294,7 +294,7 @@ server.registerTool(
   {
     title: "Delete a file or folder",
     description:
-      "Delete a file or folder from the Overleaf project. Deleted files can be restored from Overleaf's History. Uses Git when available, otherwise the web session cookie.",
+      "Delete a file or folder from the Overleaf project. Deleted files can be restored from Overleaf's History. Uses Git; falls back to the opt-in web mode if enabled.",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("File or folder path relative to the project root."),
@@ -326,7 +326,7 @@ server.registerTool(
   {
     title: "Rename or move a file",
     description:
-      "Rename and/or move a file or folder within the project, e.g. intro.tex → sections/introduction.tex. Missing target folders are created. Remember to update \\input/\\include references. Uses Git when available, otherwise the web session cookie.",
+      "Rename and/or move a file or folder within the project, e.g. intro.tex → sections/introduction.tex. Missing target folders are created. Remember to update \\input/\\include references. Uses Git; falls back to the opt-in web mode if enabled.",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("Current path."),
@@ -388,7 +388,7 @@ server.registerTool(
   {
     title: "Add a review comment",
     description:
-      "Start a new review comment thread on a passage of a .tex file, as if highlighting it in the Overleaf editor. Requires OVERLEAF_SESSION_COOKIE.",
+      "Start a new review comment thread on a passage of a .tex file, as if highlighting it in the Overleaf editor. Web mode only (opt-in, see README).",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("File the passage is in."),
@@ -431,7 +431,7 @@ server.registerTool(
   "reply_comment",
   {
     title: "Reply to a comment",
-    description: "Add a reply to an existing comment thread (thread IDs come from get_comments). Requires OVERLEAF_SESSION_COOKIE.",
+    description: "Add a reply to an existing comment thread (thread IDs come from get_comments). Web mode only (opt-in, see README).",
     inputSchema: {
       project: projectArg,
       thread_id: z.string().regex(/^[0-9a-f]{24}$/i).describe("Thread ID from get_comments."),
@@ -452,7 +452,7 @@ server.registerTool(
   "resolve_comment",
   {
     title: "Resolve or reopen a comment",
-    description: "Mark a comment thread as resolved, or reopen a resolved one. Requires OVERLEAF_SESSION_COOKIE.",
+    description: "Mark a comment thread as resolved, or reopen a resolved one. Web mode only (opt-in, see README).",
     inputSchema: {
       project: projectArg,
       thread_id: z.string().regex(/^[0-9a-f]{24}$/i).describe("Thread ID from get_comments."),
@@ -490,7 +490,7 @@ server.registerTool(
   {
     title: "Compile project",
     description:
-      "Compile the project on Overleaf and report errors and warnings with file and line numbers. Requires OVERLEAF_SESSION_COOKIE.",
+      "Compile the project on Overleaf and report errors and warnings with file and line numbers. Web mode only (opt-in, see README).",
     inputSchema: {
       project: projectArg,
       draft: z.boolean().optional().describe("Fast draft compile (no images)."),
@@ -527,7 +527,7 @@ server.registerTool(
   "download_pdf",
   {
     title: "Download compiled PDF",
-    description: "Compile the project and save the PDF to a local path. Requires OVERLEAF_SESSION_COOKIE.",
+    description: "Compile the project and save the PDF to a local path. Web mode only (opt-in, see README).",
     inputSchema: {
       project: projectArg,
       output_path: z.string().optional().describe("Where to save the PDF. Defaults to the cache directory."),
@@ -551,7 +551,7 @@ server.registerTool(
   {
     title: "Get review comments",
     description:
-      "List review comment threads in the project with the commented text, file, line and replies. Requires OVERLEAF_SESSION_COOKIE.",
+      "List review comment threads in the project with the commented text, file, line and replies. Web mode only (opt-in, see README).",
     inputSchema: {
       project: projectArg,
       include_resolved: z.boolean().optional().describe("Include resolved threads (default false)."),
@@ -593,12 +593,20 @@ server.registerTool(
 );
 
 async function main(): Promise<void> {
-  if (!cfg.gitToken && !cfg.sessionCookie) {
-    console.error("mcp-overleaf: warning: neither OVERLEAF_GIT_TOKEN nor OVERLEAF_SESSION_COOKIE is set; only write_markdown dry runs will work.");
+  if (web.enabled) {
+    console.error(
+      "mcp-overleaf: web mode is ON. It uses Overleaf's internal web endpoints, which are not a publicly supported interface " +
+        "and may violate Overleaf's Acceptable Use Policy; your account could be suspended. Use at your own risk.",
+    );
+  } else if (cfg.sessionCookie) {
+    console.error("mcp-overleaf: OVERLEAF_SESSION_COOKIE is set but ignored because web mode is off (set OVERLEAF_ENABLE_WEB=1 to opt in).");
+  }
+  if (!cfg.gitToken && !web.enabled) {
+    console.error("mcp-overleaf: warning: OVERLEAF_GIT_TOKEN is not set; only write_markdown dry runs will work.");
   }
   await server.connect(new StdioServerTransport());
   console.error(
-    `mcp-overleaf ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web session: ${web.enabled ? "on" : "off"})`,
+    `mcp-overleaf ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web mode: ${web.enabled ? "on" : "off"})`,
   );
 }
 

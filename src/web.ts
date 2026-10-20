@@ -67,7 +67,8 @@ function metaContent(html: string, name: string): string | undefined {
 
 /**
  * Client for Overleaf's (unofficial) web endpoints, authenticated with a browser session cookie.
- * Used for things the Git bridge cannot do: listing projects, compiling, and reading comments.
+ * Used for things the Git bridge cannot do: listing projects, compiling, and comments.
+ * Opt-in only (OVERLEAF_ENABLE_WEB): these are not publicly supported interfaces.
  */
 export class OverleafWeb {
   private readonly cookies = new Map<string, string>();
@@ -75,6 +76,7 @@ export class OverleafWeb {
   private readonly rootFolders = new Map<string, string>();
 
   constructor(private readonly cfg: Config) {
+    if (!cfg.webOptIn) return;
     for (const part of cfg.sessionCookie?.split(";") ?? []) {
       const i = part.indexOf("=");
       if (i > 0) this.cookies.set(part.slice(0, i).trim(), part.slice(i + 1).trim());
@@ -86,11 +88,15 @@ export class OverleafWeb {
   }
 
   requireEnabled(feature: string): void {
-    if (!this.enabled) {
+    if (this.enabled) return;
+    if (!this.cfg.webOptIn) {
       throw new Error(
-        `${feature} requires OVERLEAF_SESSION_COOKIE (your Overleaf browser session cookie). See the README for how to get it.`,
+        `${feature} needs web mode, which is off by default. Web mode uses Overleaf's internal web endpoints, ` +
+          `which may violate Overleaf's Acceptable Use Policy and could get your account suspended. ` +
+          `To use it at your own risk, set OVERLEAF_ENABLE_WEB=1 and OVERLEAF_SESSION_COOKIE. See the README.`,
       );
     }
+    throw new Error(`${feature} needs OVERLEAF_SESSION_COOKIE (your Overleaf browser session cookie). See the README.`);
   }
 
   private cookieHeader(): string {

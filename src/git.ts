@@ -42,7 +42,11 @@ export class GitClient {
       if (err.code === "ENOENT") throw new Error("git is not installed or not on PATH.");
       let detail = (err.stderr || err.message).trim();
       if (this.cfg.gitToken) detail = detail.split(this.cfg.gitToken).join("***");
-      if (/401|403|Authentication failed|could not read Username/i.test(detail)) {
+      if (/no git access/i.test(detail)) {
+        detail +=
+          "\nOverleaf Git integration needs the project owner to have a paid or institutional plan." +
+          " Without it, the only alternative is the opt-in web mode; read the README for its risks first.";
+      } else if (/401|403|Authentication failed|could not read Username/i.test(detail)) {
         detail += "\nCheck OVERLEAF_GIT_TOKEN. Overleaf Git integration requires a paid plan (or institutional access).";
       }
       throw new Error(`git ${args[0]} failed: ${detail}`);

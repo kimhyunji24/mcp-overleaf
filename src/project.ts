@@ -51,7 +51,7 @@ export class ProjectStore {
     if (ID_RE.test(r)) return r.toLowerCase();
 
     if (!this.web.enabled) {
-      throw new Error(`"${r}" is not a project ID. Looking projects up by name requires OVERLEAF_SESSION_COOKIE.`);
+      throw new Error(`"${r}" is not a project ID. Looking projects up by name needs the opt-in web mode (see README); pass the project ID or URL instead.`);
     }
     const projects = (await this.web.listProjects()).filter((p) => !p.trashed);
     const needle = r.toLowerCase();
@@ -94,7 +94,7 @@ export class ProjectStore {
         throw e;
       }
     }
-    throw new Error("No credentials configured. Set OVERLEAF_GIT_TOKEN and/or OVERLEAF_SESSION_COOKIE.");
+    throw new Error("No credentials configured. Set OVERLEAF_GIT_TOKEN (or opt in to web mode with OVERLEAF_ENABLE_WEB=1 and OVERLEAF_SESSION_COOKIE; see README).");
   }
 
   private async syncGit(id: string, force: boolean): Promise<string> {

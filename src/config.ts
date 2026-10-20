@@ -9,6 +9,11 @@ export interface Config {
   gitToken?: string;
   /** Full Cookie header value, e.g. "overleaf_session2=s%3A...". */
   sessionCookie?: string;
+  /**
+   * Explicit opt-in for web mode (OVERLEAF_ENABLE_WEB). Web mode uses Overleaf's internal endpoints,
+   * which may conflict with Overleaf's Acceptable Use Policy, so a cookie alone never turns it on.
+   */
+  webOptIn: boolean;
   defaultProject?: string;
   cacheDir: string;
   authorName: string;
@@ -28,6 +33,7 @@ export function loadConfig(): Config {
     gitToken: env("OVERLEAF_GIT_TOKEN"),
     // A bare value is assumed to be overleaf.com's session cookie; pass "name=value" for other instances.
     sessionCookie: cookie && !cookie.includes("=") ? `overleaf_session2=${cookie}` : cookie,
+    webOptIn: /^(1|true|yes|on)$/i.test(env("OVERLEAF_ENABLE_WEB") ?? ""),
     defaultProject: env("OVERLEAF_PROJECT_ID"),
     cacheDir: env("OVERLEAF_MCP_CACHE_DIR") ?? path.join(os.homedir(), ".mcp-overleaf"),
     authorName: env("OVERLEAF_GIT_AUTHOR_NAME") ?? "Overleaf MCP",

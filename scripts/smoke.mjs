@@ -10,11 +10,11 @@ import os from "node:os";
 
 const readOnly = process.argv.includes("--read-only");
 const hasGit = !!process.env.OVERLEAF_GIT_TOKEN;
-const hasCookie = !!process.env.OVERLEAF_SESSION_COOKIE;
+const hasCookie = !!process.env.OVERLEAF_SESSION_COOKIE && /^(1|true|yes|on)$/i.test(process.env.OVERLEAF_ENABLE_WEB ?? "");
 const project = process.env.OVERLEAF_PROJECT_ID;
 const TEST_FILE = "sections/mcp-smoke-test.tex";
 
-console.log(`git token: ${hasGit ? "set" : "missing"}, session cookie: ${hasCookie ? "set" : "missing"}, project: ${project || "missing"}\n`);
+console.log(`git token: ${hasGit ? "set" : "missing"}, web mode: ${hasCookie ? "on" : "off"}, project: ${project || "missing"}\n`);
 if (!project) {
   console.error("Set OVERLEAF_PROJECT_ID in .env");
   process.exit(1);
@@ -44,8 +44,8 @@ function rpc(method, params) {
 const results = [];
 async function step(name, args, { needs, check } = {}) {
   if (needs === "git" && !hasGit) return results.push([name, "SKIP", "no git token"]);
-  if (needs === "cookie" && !hasCookie) return results.push([name, "SKIP", "no session cookie"]);
-  if (needs === "write" && (readOnly || !hasGit)) return results.push([name, "SKIP", readOnly ? "--read-only" : "no git token"]);
+  if (needs === "cookie" && !hasCookie) return results.push([name, "SKIP", "web mode off"]);
+  if (needs === "write" && (readOnly || (!hasGit && !hasCookie))) return results.push([name, "SKIP", readOnly ? "--read-only" : "no git token or web mode"]);
   const started = Date.now();
   const msg = await rpc("tools/call", { name: name.split(" ")[0], arguments: args });
   const text = msg.result?.content?.[0]?.text ?? JSON.stringify(msg.error);
@@ -99,5 +99,5 @@ await step(
 server.kill();
 console.log("Summary");
 for (const [name, status, why] of results) console.log(`  ${status.padEnd(4)} ${name}${why ? ` (${why})` : ""}`);
-if (!readOnly && hasGit) console.log(`\nYou can delete ${TEST_FILE} from the test project afterwards.`);
+if (!readOnly && (hasGit || hasCookie)) console.log(`\nYou can delete ${TEST_FILE} from the test project afterwards.`);
 process.exit(results.some((r) => r[1] === "FAIL") ? 1 : 0);
