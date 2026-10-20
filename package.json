@@ -25,7 +25,7 @@
     "test": "tsc && node --test dist/latex.test.js dist/markdown.test.js",
     "smoke": "node --env-file=.env scripts/smoke.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "keywords": [
     "mcp",
