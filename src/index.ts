@@ -14,12 +14,14 @@ import {
   sectionRange,
 } from "./latex.js";
 import { ProjectStore, listFiles, readAllText, readText, safeJoin } from "./project.js";
+import { OverleafWeb } from "./web.js";
 
 const VERSION = "0.1.0";
 
 const cfg = loadConfig();
+const web = new OverleafWeb(cfg);
 const git = new GitClient(cfg);
-const store = new ProjectStore(cfg, git);
+const store = new ProjectStore(cfg, web, git);
 
 const server = new McpServer({ name: "overleaf-mcp", version: VERSION });
 
@@ -37,7 +39,29 @@ async function run(fn: () => Promise<string>): Promise<ToolResult> {
 const projectArg = z
   .string()
   .optional()
-  .describe("Project ID or Overleaf project URL. Defaults to OVERLEAF_PROJECT_ID.");
+  .describe("Project ID, Overleaf project URL, or project name. Defaults to OVERLEAF_PROJECT_ID.");
+
+server.registerTool(
+  "list_projects",
+  {
+    title: "List Overleaf projects",
+    description: "List the Overleaf projects in your account with their IDs. Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      include_archived: z.boolean().optional().describe("Also list archived and trashed projects."),
+    },
+  },
+  async ({ include_archived }) => run(async () => {
+    const projects = (await web.listProjects()).filter((p) => include_archived || (!p.archived && !p.trashed));
+    if (!projects.length) return "No projects found.";
+    return projects
+      .map((p) => {
+        const extra = [p.accessLevel, p.lastUpdated && `updated ${p.lastUpdated}`, p.archived && "archived", p.trashed && "trashed"];
+        const meta = extra.filter(Boolean).join(", ");
+        return `- ${p.name} (${p.id})${meta ? ` — ${meta}` : ""}`;
+      })
+      .join("\n");
+  }),
+);
 
 server.registerTool(
   "list_files",
@@ -190,9 +214,13 @@ server.registerTool(
 
 
 async function main(): Promise<void> {
-  if (!cfg.gitToken) console.error("overleaf-mcp: warning: OVERLEAF_GIT_TOKEN is not set; all tools will fail.");
+  if (!cfg.gitToken && !cfg.sessionCookie) {
+    console.error("overleaf-mcp: warning: neither OVERLEAF_GIT_TOKEN nor OVERLEAF_SESSION_COOKIE is set; all tools will fail.");
+  }
   await server.connect(new StdioServerTransport());
-  console.error(`overleaf-mcp ${VERSION} running`);
+  console.error(
+    `overleaf-mcp ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web session: ${web.enabled ? "on" : "off"})`,
+  );
 }
 
 main().catch((e) => {

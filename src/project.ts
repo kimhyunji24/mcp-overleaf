@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { unzipSync } from "fflate";
 import type { Config } from "./config.js";
 import type { GitClient } from "./git.js";
+import type { OverleafWeb } from "./web.js";
 
 const ID_RE = /^[0-9a-f]{24}$/i;
 /** How long a local copy is trusted before re-syncing with Overleaf on read. */
@@ -10,6 +12,8 @@ const READ_TTL_MS = 15_000;
 
 export interface Checkout {
   dir: string;
+  /** "git": read/write working copy. "snapshot": read-only copy from the zip download. */
+  mode: "git" | "snapshot";
 }
 
 /** Resolve a project-relative path inside `root`, rejecting anything that escapes it. */
@@ -33,17 +37,31 @@ export class ProjectStore {
 
   constructor(
     private readonly cfg: Config,
+    private readonly web: OverleafWeb,
     private readonly git: GitClient,
   ) {}
 
-  /** Accepts a project ID or an Overleaf project URL. */
+  /** Accepts a project ID, an Overleaf project URL, or (with a session cookie) a project name. */
   async resolve(ref?: string): Promise<string> {
     const r = ref?.trim() || this.cfg.defaultProject;
-    if (!r) throw new Error("No project given. Pass `project` (ID or URL) or set OVERLEAF_PROJECT_ID.");
+    if (!r) throw new Error("No project given. Pass `project` (ID, URL or name) or set OVERLEAF_PROJECT_ID.");
     const fromUrl = r.match(/project\/([0-9a-f]{24})/i);
     if (fromUrl) return fromUrl[1].toLowerCase();
     if (ID_RE.test(r)) return r.toLowerCase();
-    throw new Error(`"${r}" is not an Overleaf project ID or URL.`);
+
+    if (!this.web.enabled) {
+      throw new Error(`"${r}" is not a project ID. Looking projects up by name requires OVERLEAF_SESSION_COOKIE.`);
+    }
+    const projects = (await this.web.listProjects()).filter((p) => !p.trashed);
+    const needle = r.toLowerCase();
+    const exact = projects.filter((p) => p.name.toLowerCase() === needle);
+    if (exact.length === 1) return exact[0].id;
+    const partial = exact.length ? exact : projects.filter((p) => p.name.toLowerCase().includes(needle));
+    if (partial.length === 1) return partial[0].id;
+    if (!partial.length) throw new Error(`No project named "${r}". Use list_projects to see available projects.`);
+    throw new Error(
+      `"${r}" matches several projects; pass the ID instead:\n` + partial.map((p) => `- ${p.name} (${p.id})`).join("\n"),
+    );
   }
 
   /** Serialize operations per project so concurrent tool calls don't trample the working copy. */
@@ -55,8 +73,27 @@ export class ProjectStore {
   }
 
   private async open(id: string, write: boolean): Promise<Checkout> {
-    if (!this.git.enabled) throw new Error("OVERLEAF_GIT_TOKEN is not set. Generate one in Overleaf → Account Settings → Git Integration.");
-    return { dir: await this.syncGit(id, write) };
+    let gitError: Error | undefined;
+    if (this.git.enabled) {
+      try {
+        return { dir: await this.syncGit(id, write), mode: "git" };
+      } catch (e) {
+        if (write || !this.web.enabled) throw e;
+        gitError = e as Error;
+      }
+    }
+    if (write) {
+      throw new Error("Editing files requires OVERLEAF_GIT_TOKEN (Overleaf Git integration). The session cookie only allows reading.");
+    }
+    if (this.web.enabled) {
+      try {
+        return { dir: await this.syncSnapshot(id), mode: "snapshot" };
+      } catch (e) {
+        if (gitError) throw new Error(`${gitError.message}\nZip download fallback also failed: ${(e as Error).message}`);
+        throw e;
+      }
+    }
+    throw new Error("No credentials configured. Set OVERLEAF_GIT_TOKEN and/or OVERLEAF_SESSION_COOKIE.");
   }
 
   private async syncGit(id: string, force: boolean): Promise<string> {
@@ -68,6 +105,24 @@ export class ProjectStore {
       await this.git.clone(id, dir);
     } else if (force || Date.now() - (this.lastSync.get(key) ?? 0) > READ_TTL_MS) {
       await this.git.pull(dir);
+    }
+    this.lastSync.set(key, Date.now());
+    return dir;
+  }
+
+  private async syncSnapshot(id: string): Promise<string> {
+    const dir = path.join(this.cfg.cacheDir, "snapshots", id);
+    const key = `zip:${id}`;
+    if (existsSync(dir) && Date.now() - (this.lastSync.get(key) ?? 0) <= READ_TTL_MS) return dir;
+
+    const entries = unzipSync(await this.web.downloadZip(id));
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.mkdir(dir, { recursive: true });
+    for (const [name, data] of Object.entries(entries)) {
+      if (name.endsWith("/")) continue;
+      const target = safeJoin(dir, name);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, data);
     }
     this.lastSync.set(key, Date.now());
     return dir;
