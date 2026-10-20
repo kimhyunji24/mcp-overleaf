@@ -56,6 +56,20 @@ function decodeHtml(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** socket.io 0.9 polling responses frame multiple messages as �<len>�<msg>. */
+export function splitSocketFrames(body: string): string[] {
+  if (!body.startsWith("�")) return body ? [body] : [];
+  const out: string[] = [];
+  let i = 0;
+  while (i < body.length && body[i] === "�") {
+    const end = body.indexOf("�", i + 1);
+    const len = Number(body.slice(i + 1, end));
+    out.push(body.slice(end + 1, end + 1 + len));
+    i = end + 1 + len;
+  }
+  return out;
+}
+
 function metaContent(html: string, name: string): string | undefined {
   const m = html.match(new RegExp(`<meta\\s+name="${name}"[^>]*?\\scontent="([^"]*)"`));
   return m ? decodeHtml(m[1]) : undefined;
@@ -68,6 +82,7 @@ function metaContent(html: string, name: string): string | undefined {
 export class OverleafWeb {
   private readonly cookies = new Map<string, string>();
   private csrfToken?: string;
+  private readonly rootFolders = new Map<string, string>();
 
   constructor(private readonly cfg: Config) {
     for (const part of cfg.sessionCookie?.split(";") ?? []) {
@@ -219,6 +234,72 @@ export class OverleafWeb {
       }
     }
     throw new Error(`Could not fetch ${file.path}: ${lastError}`);
+  }
+
+  /**
+   * Root folder ID of a project, from the realtime service's joinProject response
+   * (socket.io 0.9 over xhr-polling, so no WebSocket dependency is needed).
+   */
+  async getRootFolderId(projectId: string): Promise<string> {
+    const cached = this.rootFolders.get(projectId);
+    if (cached) return cached;
+
+    const hs = await this.request(`/socket.io/1/?projectId=${projectId}&t=${Date.now()}`);
+    const sid = (await hs.text()).split(":")[0];
+    if (!hs.ok || !sid) throw new Error(`Could not connect to Overleaf's realtime service (HTTP ${hs.status}).`);
+    const pollUrl = `/socket.io/1/xhr-polling/${sid}?projectId=${projectId}`;
+
+    try {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const res = await this.request(`${pollUrl}&t=${Date.now()}`);
+        if (!res.ok) throw new Error(`Realtime poll failed: HTTP ${res.status}`);
+        for (const msg of splitSocketFrames(await res.text())) {
+          if (msg.startsWith("0:")) throw new Error("Overleaf's realtime service closed the connection.");
+          if (!msg.startsWith("5:")) continue;
+          const event = JSON.parse(msg.slice(msg.indexOf("{"))) as { name: string; args: any[] };
+          if (event.name === "joinProjectResponse") {
+            const id = event.args[0]?.project?.rootFolder?.[0]?._id as string | undefined;
+            if (!id) throw new Error("joinProject response did not include the project's root folder.");
+            this.rootFolders.set(projectId, id);
+            return id;
+          }
+          if (event.name === "connectionRejected" || event.name === "otUpdateError") {
+            throw new Error(`Overleaf rejected the realtime connection: ${JSON.stringify(event.args[0])}`);
+          }
+        }
+      }
+      throw new Error("Timed out waiting for Overleaf's project data.");
+    } finally {
+      await this.request(pollUrl, { method: "POST", body: "0::" }).catch(() => {});
+    }
+  }
+
+  /**
+   * Create or replace a file through the editor's upload endpoint (works on free plans).
+   * Intermediate folders in `relPath` are created by Overleaf as needed.
+   */
+  async uploadFile(projectId: string, relPath: string, data: Uint8Array): Promise<void> {
+    this.requireEnabled("Saving without Git");
+    const folderId = await this.getRootFolderId(projectId);
+    const name = relPath.split("/").pop()!;
+    for (const refresh of [false, true]) {
+      const form = new FormData();
+      form.append("name", name);
+      if (relPath.includes("/")) form.append("relativePath", relPath);
+      form.append("qqfile", new Blob([new Uint8Array(data)]), name);
+      const res = await this.request(`/project/${projectId}/upload?folder_id=${folderId}`, {
+        method: "POST",
+        headers: { Accept: "application/json", "X-Csrf-Token": await this.getCsrf(refresh) },
+        body: form,
+      });
+      if (res.status === 403 && !refresh) continue;
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || body.success === false) {
+        throw new Error(`Uploading ${relPath} failed: ${body.error ?? `HTTP ${res.status}`}`);
+      }
+      return;
+    }
+    throw new Error(`Uploading ${relPath} was rejected (HTTP 403).`);
   }
 
   async getThreads(projectId: string): Promise<Record<string, Thread>> {

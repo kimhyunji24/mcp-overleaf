@@ -159,7 +159,7 @@ server.registerTool(
   {
     title: "Write a file",
     description:
-      "Create or overwrite a file in the Overleaf project and push it (via Git). Prefer edit_file for changing part of an existing file. Requires OVERLEAF_GIT_TOKEN.",
+      "Create or overwrite a file in the Overleaf project and save it to Overleaf. Prefer edit_file for changing part of an existing file. Uses Git when available, otherwise the web session cookie.",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("Path relative to the project root."),
@@ -173,7 +173,7 @@ server.registerTool(
       const full = safeJoin(co.dir, rel);
       await fs.mkdir(path.dirname(full), { recursive: true });
       await fs.writeFile(full, content, "utf8");
-      return git.commitAndPush(co.dir, [rel], commit_message ?? `Update ${rel} via overleaf-mcp`);
+      return store.save(id, co, [rel], commit_message ?? `Update ${rel} via overleaf-mcp`);
     });
   }),
 );
@@ -183,7 +183,7 @@ server.registerTool(
   {
     title: "Edit a file",
     description:
-      "Replace an exact string in a project file and push the change (via Git). old_string must match exactly once unless replace_all is set. Requires OVERLEAF_GIT_TOKEN.",
+      "Replace an exact string in a project file and save it to Overleaf. old_string must match exactly once unless replace_all is set. Uses Git when available, otherwise the web session cookie.",
     inputSchema: {
       project: projectArg,
       path: z.string().describe("Path relative to the project root."),
@@ -210,7 +210,7 @@ server.registerTool(
       let updated = replace_all ? text.split(oldS).join(norm(new_string)) : text.replace(oldS, () => norm(new_string));
       if (crlf) updated = updated.replace(/\n/g, "\r\n");
       await fs.writeFile(safeJoin(co.dir, rel), updated, "utf8");
-      const result = await git.commitAndPush(co.dir, [rel], commit_message ?? `Edit ${rel} via overleaf-mcp`);
+      const result = await store.save(id, co, [rel], commit_message ?? `Edit ${rel} via overleaf-mcp`);
       return `Replaced ${replace_all ? count : 1} occurrence(s) in ${rel}. ${result}`;
     });
   }),
@@ -226,7 +226,7 @@ server.registerTool(
       "$math$ and $$display$$ ({#eq:label}), citations [@key; @key2, p. 3], cross refs @fig:x/@sec:x/@eq:x/@tbl:x, " +
       "figures ![caption](img.png){#fig:x width=60%}, pipe tables with 'Table: caption {#tbl:x}', footnotes, lists, code, " +
       "and raw LaTeX (\\commands and \\begin..\\end blocks pass through). Set dry_run to preview the LaTeX first. " +
-      "Writing requires OVERLEAF_GIT_TOKEN.",
+      "Writing uses Git when available, otherwise the web session cookie.",
     inputSchema: {
       project: projectArg,
       markdown: z.string().optional().describe("Markdown text. Use this or md_path."),
@@ -276,7 +276,7 @@ server.registerTool(
         await fs.mkdir(path.dirname(full), { recursive: true });
         await fs.writeFile(full, plan.content, "utf8");
         const message = commit_message ?? `${section ? `Update section "${section}"` : `Write ${plan.file}`} from Markdown via overleaf-mcp`;
-        return report(plan, await git.commitAndPush(co.dir, [plan.file], message));
+        return report(plan, await store.save(id, co, [plan.file], message));
       });
     }),
 );

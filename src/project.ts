@@ -12,7 +12,7 @@ const READ_TTL_MS = 15_000;
 
 export interface Checkout {
   dir: string;
-  /** "git": read/write working copy. "snapshot": read-only copy from the zip download. */
+  /** "git": Git working copy. "snapshot": copy from the zip download; changes are saved by web upload. */
   mode: "git" | "snapshot";
 }
 
@@ -34,6 +34,7 @@ export function isBinary(buf: Buffer): boolean {
 export class ProjectStore {
   private readonly lastSync = new Map<string, number>();
   private readonly locks = new Map<string, Promise<unknown>>();
+  private readonly noGitAccess = new Set<string>();
 
   constructor(
     private readonly cfg: Config,
@@ -74,20 +75,20 @@ export class ProjectStore {
 
   private async open(id: string, write: boolean): Promise<Checkout> {
     let gitError: Error | undefined;
-    if (this.git.enabled) {
+    if (this.git.enabled && !this.noGitAccess.has(id)) {
       try {
         return { dir: await this.syncGit(id, write), mode: "git" };
       } catch (e) {
-        if (write || !this.web.enabled) throw e;
+        if (!this.web.enabled) throw e;
         gitError = e as Error;
+        // Git is a paid feature: remember projects without it and go straight to the web path next time.
+        if (/no git access|Repository not found|paid plan/i.test(gitError.message)) this.noGitAccess.add(id);
       }
-    }
-    if (write) {
-      throw new Error("Editing files requires OVERLEAF_GIT_TOKEN (Overleaf Git integration). The session cookie only allows reading.");
     }
     if (this.web.enabled) {
       try {
-        return { dir: await this.syncSnapshot(id), mode: "snapshot" };
+        // Always start a write from Overleaf's latest content.
+        return { dir: await this.syncSnapshot(id, write), mode: "snapshot" };
       } catch (e) {
         if (gitError) throw new Error(`${gitError.message}\nZip download fallback also failed: ${(e as Error).message}`);
         throw e;
@@ -110,10 +111,10 @@ export class ProjectStore {
     return dir;
   }
 
-  private async syncSnapshot(id: string): Promise<string> {
+  private async syncSnapshot(id: string, force = false): Promise<string> {
     const dir = path.join(this.cfg.cacheDir, "snapshots", id);
     const key = `zip:${id}`;
-    if (existsSync(dir) && Date.now() - (this.lastSync.get(key) ?? 0) <= READ_TTL_MS) return dir;
+    if (!force && existsSync(dir) && Date.now() - (this.lastSync.get(key) ?? 0) <= READ_TTL_MS) return dir;
 
     const entries = unzipSync(await this.web.downloadZip(id));
     await fs.rm(dir, { recursive: true, force: true });
@@ -134,6 +135,13 @@ export class ProjectStore {
 
   write<T>(id: string, fn: (co: Checkout) => Promise<T>): Promise<T> {
     return this.withLock(id, async () => fn(await this.open(id, true)));
+  }
+
+  /** Send files changed in a checkout back to Overleaf: git commit+push, or web upload without Git. */
+  async save(id: string, co: Checkout, files: string[], message: string): Promise<string> {
+    if (co.mode === "git") return this.git.commitAndPush(co.dir, files, message);
+    for (const f of files) await this.web.uploadFile(id, f, await fs.readFile(safeJoin(co.dir, f)));
+    return `Saved to Overleaf via the web editor (no Git). Use Overleaf's History to review or undo.`;
   }
 }
 
