@@ -150,3 +150,7 @@ test("refuses to overwrite the main file; append goes before \\end{document}", (
   const plan = planMarkdownWrite(project, { markdown: "## Extra", path: "main.tex", mode: "append" });
   assert.match(plan.content, /Old method\.\n\n\\section\{Extra\}\n\n\\end\{document\}$/);
 });
+
+test("hyphens between digits (dates, IDs) are left alone", () => {
+  assert.equal(md("On 2026-10-20, see ISO-8601."), "On 2026-10-20, see ISO-8601.");
+});

@@ -448,7 +448,6 @@ function inline(src: string, ctx: Ctx): string {
   s = s.replace(/"(?=\S)([^"\n]*?)(?<=\S)"/g, "``$1''");
   s = s.replace(/(^|[\s(\[])'(?=\S)/g, "$1`");
   s = s.replace(/\.\.\./g, "\\ldots{}");
-  s = s.replace(/(?<=\d)-(?=\d)/g, "--");
 
   s = s
     .replace(/\u0002B/g, "\\textbf{")
