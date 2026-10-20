@@ -73,7 +73,7 @@ await step(
   {
     project,
     path: TEST_FILE,
-    markdown: `## MCP smoke test {#sec:smoke}\n\nWritten by **overleaf-mcp** at ${stamp}.\n\n- one\n- two\n\n$$\nE = mc^2\n$$ {#eq:smoke}`,
+    markdown: `## MCP smoke test {#sec:smoke}\n\nWritten by **mcp-overleaf** at ${stamp}.\n\n- one\n- two\n\n$$\nE = mc^2\n$$ {#eq:smoke}`,
   },
   { needs: "write", check: (t) => /pushed|Saved to Overleaf/.test(t) },
 );
@@ -92,7 +92,7 @@ await step("compile", { project, draft: true }, { needs: "cookie" });
 await step("get_comments", { project, include_resolved: true }, { needs: "cookie" });
 await step(
   "download_pdf",
-  { project, output_path: path.join(os.tmpdir(), "overleaf-mcp-smoke.pdf") },
+  { project, output_path: path.join(os.tmpdir(), "mcp-overleaf-smoke.pdf") },
   { needs: "cookie" },
 );
 

@@ -1,4 +1,4 @@
-# overleaf-mcp
+# mcp-overleaf
 
 An [MCP](https://modelcontextprotocol.io) server that lets Claude, Cursor, and other MCP clients **read, edit, compile and review** your Overleaf LaTeX projects — and lets you **write in Markdown and publish to Overleaf as LaTeX**.
 
@@ -74,7 +74,7 @@ The tool warns when the output needs a package your preamble doesn't load (e.g. 
 
 ## Credentials
 
-overleaf-mcp uses two independent ways in. Configure one or both.
+mcp-overleaf uses two independent ways in. Configure one or both.
 
 **Git token** (`OVERLEAF_GIT_TOKEN`): the official route, with real commits. Overleaf Git integration requires the project owner to have a paid or institutional plan.
 Overleaf → Account Settings → *Git Integration* → *Generate token*.
@@ -91,7 +91,7 @@ Requires Node.js 20+ and git.
 ### Claude Code
 
 ```bash
-claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_SESSION_COOKIE=s%3A... -- npx -y overleaf-mcp
+claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_SESSION_COOKIE=s%3A... -- npx -y mcp-overleaf
 ```
 
 ### Claude Desktop / Cursor / others
@@ -101,7 +101,7 @@ claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_SESSION_COOKIE
   "mcpServers": {
     "overleaf": {
       "command": "npx",
-      "args": ["-y", "overleaf-mcp"],
+      "args": ["-y", "mcp-overleaf"],
       "env": {
         "OVERLEAF_GIT_TOKEN": "olp_...",
         "OVERLEAF_SESSION_COOKIE": "s%3A...",
@@ -112,7 +112,7 @@ claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_SESSION_COOKIE
 }
 ```
 
-On Windows, if the client cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "overleaf-mcp"]`.
+On Windows, if the client cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "mcp-overleaf"]`.
 
 ### All options
 
@@ -123,7 +123,7 @@ On Windows, if the client cannot find `npx`, use `"command": "cmd"` and `"args":
 | `OVERLEAF_PROJECT_ID` | | Default project when a tool call omits `project` |
 | `OVERLEAF_BASE_URL` | `https://www.overleaf.com` | Self-hosted / Community Edition URL |
 | `OVERLEAF_GIT_URL` | `https://git.overleaf.com` | Git bridge URL. For Server Pro use `https://<your-site>/git` |
-| `OVERLEAF_MCP_CACHE_DIR` | `~/.overleaf-mcp` | Where project copies and PDFs are kept |
+| `OVERLEAF_MCP_CACHE_DIR` | `~/.mcp-overleaf` | Where project copies and PDFs are kept |
 | `OVERLEAF_GIT_AUTHOR_NAME` / `_EMAIL` | `Overleaf MCP` | Commit author |
 
 ## How it works

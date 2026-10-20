@@ -29,7 +29,7 @@ const web = new OverleafWeb(cfg);
 const git = new GitClient(cfg);
 const store = new ProjectStore(cfg, web, git);
 
-const server = new McpServer({ name: "overleaf-mcp", version: VERSION });
+const server = new McpServer({ name: "mcp-overleaf", version: VERSION });
 
 type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
@@ -176,7 +176,7 @@ server.registerTool(
       const full = safeJoin(co.dir, rel);
       await fs.mkdir(path.dirname(full), { recursive: true });
       await fs.writeFile(full, content, "utf8");
-      return store.save(id, co, [rel], commit_message ?? `Update ${rel} via overleaf-mcp`);
+      return store.save(id, co, [rel], commit_message ?? `Update ${rel} via mcp-overleaf`);
     });
   }),
 );
@@ -213,7 +213,7 @@ server.registerTool(
       let updated = replace_all ? text.split(oldS).join(norm(new_string)) : text.replace(oldS, () => norm(new_string));
       if (crlf) updated = updated.replace(/\n/g, "\r\n");
       await fs.writeFile(safeJoin(co.dir, rel), updated, "utf8");
-      const result = await store.save(id, co, [rel], commit_message ?? `Edit ${rel} via overleaf-mcp`);
+      const result = await store.save(id, co, [rel], commit_message ?? `Edit ${rel} via mcp-overleaf`);
       return `Replaced ${replace_all ? count : 1} occurrence(s) in ${rel}. ${result}`;
     });
   }),
@@ -278,7 +278,7 @@ server.registerTool(
         const full = safeJoin(co.dir, plan.file);
         await fs.mkdir(path.dirname(full), { recursive: true });
         await fs.writeFile(full, plan.content, "utf8");
-        const message = commit_message ?? `${section ? `Update section "${section}"` : `Write ${plan.file}`} from Markdown via overleaf-mcp`;
+        const message = commit_message ?? `${section ? `Update section "${section}"` : `Write ${plan.file}`} from Markdown via mcp-overleaf`;
         return report(plan, await store.save(id, co, [plan.file], message));
       });
     }),
@@ -310,7 +310,7 @@ server.registerTool(
         if (co.mode === "git") {
           if (!existsSync(full)) throw new Error(`Not found in project: ${target}`);
           await git.run(["rm", "-r", "--quiet", "--", target], co.dir);
-          return `Deleted ${target}. ${await git.commitAndPush(co.dir, [target], commit_message ?? `Delete ${target} via overleaf-mcp`)}`;
+          return `Deleted ${target}. ${await git.commitAndPush(co.dir, [target], commit_message ?? `Delete ${target} via mcp-overleaf`)}`;
         }
         const entity = (await web.getEntities(id)).get(target);
         if (!entity) throw new Error(`Not found in project: ${target}`);
@@ -346,7 +346,7 @@ server.registerTool(
         if (co.mode === "git") {
           await fs.mkdir(path.dirname(toFull), { recursive: true });
           await git.run(["mv", "--", from, to], co.dir);
-          const result = await git.commitAndPush(co.dir, [from, to], commit_message ?? `Move ${from} to ${to} via overleaf-mcp`);
+          const result = await git.commitAndPush(co.dir, [from, to], commit_message ?? `Move ${from} to ${to} via mcp-overleaf`);
           return `Moved ${from} → ${to}. ${result}`;
         }
 
@@ -594,11 +594,11 @@ server.registerTool(
 
 async function main(): Promise<void> {
   if (!cfg.gitToken && !cfg.sessionCookie) {
-    console.error("overleaf-mcp: warning: neither OVERLEAF_GIT_TOKEN nor OVERLEAF_SESSION_COOKIE is set; only write_markdown dry runs will work.");
+    console.error("mcp-overleaf: warning: neither OVERLEAF_GIT_TOKEN nor OVERLEAF_SESSION_COOKIE is set; only write_markdown dry runs will work.");
   }
   await server.connect(new StdioServerTransport());
   console.error(
-    `overleaf-mcp ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web session: ${web.enabled ? "on" : "off"})`,
+    `mcp-overleaf ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web session: ${web.enabled ? "on" : "off"})`,
   );
 }
 

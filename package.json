@@ -1,10 +1,10 @@
 {
-  "name": "overleaf-mcp",
+  "name": "mcp-overleaf",
   "version": "0.1.0",
   "description": "MCP server for Overleaf: read, edit, compile and review LaTeX projects from Claude, Cursor and other MCP clients",
   "type": "module",
   "bin": {
-    "overleaf-mcp": "dist/index.js"
+    "mcp-overleaf": "dist/index.js"
   },
   "files": [
     "dist",

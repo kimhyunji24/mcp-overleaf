@@ -29,8 +29,8 @@ export function loadConfig(): Config {
     // A bare value is assumed to be overleaf.com's session cookie; pass "name=value" for other instances.
     sessionCookie: cookie && !cookie.includes("=") ? `overleaf_session2=${cookie}` : cookie,
     defaultProject: env("OVERLEAF_PROJECT_ID"),
-    cacheDir: env("OVERLEAF_MCP_CACHE_DIR") ?? path.join(os.homedir(), ".overleaf-mcp"),
+    cacheDir: env("OVERLEAF_MCP_CACHE_DIR") ?? path.join(os.homedir(), ".mcp-overleaf"),
     authorName: env("OVERLEAF_GIT_AUTHOR_NAME") ?? "Overleaf MCP",
-    authorEmail: env("OVERLEAF_GIT_AUTHOR_EMAIL") ?? "overleaf-mcp@users.noreply.github.com",
+    authorEmail: env("OVERLEAF_GIT_AUTHOR_EMAIL") ?? "mcp-overleaf@users.noreply.github.com",
   };
 }
