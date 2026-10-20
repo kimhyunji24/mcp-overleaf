@@ -4,6 +4,7 @@ import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { planMarkdownWrite, type ApplyPlan } from "./apply.js";
 import { loadConfig } from "./config.js";
 import { GitClient } from "./git.js";
 import {
@@ -215,6 +216,71 @@ server.registerTool(
   }),
 );
 
+server.registerTool(
+  "write_markdown",
+  {
+    title: "Write Markdown to Overleaf",
+    description:
+      "Write in Markdown, publish as LaTeX. Converts Markdown to LaTeX and writes it into the project: a new/overwritten .tex file, " +
+      "an existing section replaced by title, or appended to a file. Supports headings ({#sec:label}, {-} for unnumbered), " +
+      "$math$ and $$display$$ ({#eq:label}), citations [@key; @key2, p. 3], cross refs @fig:x/@sec:x/@eq:x/@tbl:x, " +
+      "figures ![caption](img.png){#fig:x width=60%}, pipe tables with 'Table: caption {#tbl:x}', footnotes, lists, code, " +
+      "and raw LaTeX (\\commands and \\begin..\\end blocks pass through). Set dry_run to preview the LaTeX first. " +
+      "Writing requires OVERLEAF_GIT_TOKEN.",
+    inputSchema: {
+      project: projectArg,
+      markdown: z.string().optional().describe("Markdown text. Use this or md_path."),
+      md_path: z.string().optional().describe("Absolute path of a local .md file to convert instead of `markdown`."),
+      path: z.string().optional().describe("Target .tex file in the project. Required unless `section` is given."),
+      section: z
+        .string()
+        .optional()
+        .describe(
+          "Title of an existing section to replace. If the Markdown starts with a heading it replaces the heading too; otherwise only the body.",
+        ),
+      mode: z.enum(["overwrite", "append"]).optional().describe("For a file target: overwrite (default) or append before \\end{document}."),
+      top_level: z
+        .enum(["part", "chapter", "section", "subsection", "subsubsection", "paragraph"])
+        .optional()
+        .describe("LaTeX command for the shallowest Markdown heading. Defaults to section, or the replaced section's own level."),
+      dry_run: z.boolean().optional().describe("Only return the converted LaTeX and what would change; do not push."),
+      commit_message: z.string().optional(),
+    },
+  },
+  async ({ project, markdown, md_path, path: rel, section, mode, top_level, dry_run, commit_message }) =>
+    run(async () => {
+      if ((markdown === undefined) === (md_path === undefined)) throw new Error("Pass exactly one of `markdown` or `md_path`.");
+      const source = markdown ?? (await fs.readFile(path.resolve(md_path!), "utf8"));
+      const opts = { markdown: source, path: rel, section, mode, topLevel: top_level };
+
+      const report = (plan: ApplyPlan, result?: string) => {
+        const parts = [dry_run ? `Dry run — would apply: ${plan.description}` : `${plan.description}. ${result}`];
+        if (plan.missingPackages.length) {
+          parts.push(
+            `Note: the preamble does not load ${plan.missingPackages.map((p) => `\\usepackage{${p}}`).join(", ")}; add it or compilation may fail.`,
+          );
+        }
+        if (dry_run) parts.push(`\n${plan.latex}`);
+        return parts.join("\n");
+      };
+
+      // Converting to a fresh file needs no project access at all.
+      if (dry_run && !section && !project && !cfg.defaultProject) {
+        return report(planMarkdownWrite(new Map(), { ...opts, path: rel ?? "preview.tex" }));
+      }
+      const id = await store.resolve(project);
+      if (dry_run) return store.read(id, async (co) => report(planMarkdownWrite(await readAllText(co.dir), opts)));
+      return store.write(id, async (co) => {
+        const plan = planMarkdownWrite(await readAllText(co.dir), opts);
+        const full = safeJoin(co.dir, plan.file);
+        await fs.mkdir(path.dirname(full), { recursive: true });
+        await fs.writeFile(full, plan.content, "utf8");
+        const message = commit_message ?? `${section ? `Update section "${section}"` : `Write ${plan.file}`} from Markdown via overleaf-mcp`;
+        return report(plan, await git.commitAndPush(co.dir, [plan.file], message));
+      });
+    }),
+);
+
 function formatEntries(entries: LogEntry[], limit: number): string {
   const shown = entries.slice(0, limit).map((e) => {
     const loc = e.file ? `${e.file}${e.line ? `:${e.line}` : ""}` : e.line ? `line ${e.line}` : "";
@@ -341,7 +407,7 @@ server.registerTool(
 
 async function main(): Promise<void> {
   if (!cfg.gitToken && !cfg.sessionCookie) {
-    console.error("overleaf-mcp: warning: neither OVERLEAF_GIT_TOKEN nor OVERLEAF_SESSION_COOKIE is set; all tools will fail.");
+    console.error("overleaf-mcp: warning: neither OVERLEAF_GIT_TOKEN nor OVERLEAF_SESSION_COOKIE is set; only write_markdown dry runs will work.");
   }
   await server.connect(new StdioServerTransport());
   console.error(

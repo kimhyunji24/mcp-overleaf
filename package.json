@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsc && node --test dist/latex.test.js",
+    "test": "tsc && node --test dist/latex.test.js dist/markdown.test.js",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "prepublishOnly": "npm run build"
   },
