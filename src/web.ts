@@ -3,7 +3,7 @@ import { RealtimeSession, type Entity } from "./realtime.js";
 
 export type { Entity };
 
-const USER_AGENT = "mcp-overleaf (+https://www.npmjs.com/package/mcp-overleaf)";
+const USER_AGENT = "mcp-overleaf (+https://github.com/kimhyunji24/mcp-overleaf)";
 
 export interface ProjectSummary {
   id: string;

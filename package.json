@@ -2,6 +2,15 @@
   "name": "mcp-overleaf",
   "version": "0.1.0",
   "description": "MCP server for Overleaf: read, edit, compile and review LaTeX projects from Claude, Cursor and other MCP clients",
+  "author": "Hyunji KIM",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kimhyunji24/mcp-overleaf.git"
+  },
+  "homepage": "https://github.com/kimhyunji24/mcp-overleaf#readme",
+  "bugs": {
+    "url": "https://github.com/kimhyunji24/mcp-overleaf/issues"
+  },
   "type": "module",
   "bin": {
     "mcp-overleaf": "dist/index.js"
