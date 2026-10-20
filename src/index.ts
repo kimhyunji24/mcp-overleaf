@@ -6,7 +6,14 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { loadConfig } from "./config.js";
 import { GitClient } from "./git.js";
-import { ProjectStore, listFiles, readText, safeJoin } from "./project.js";
+import {
+  findHeading,
+  findMainFile,
+  formatOutline,
+  parseOutline,
+  sectionRange,
+} from "./latex.js";
+import { ProjectStore, listFiles, readAllText, readText, safeJoin } from "./project.js";
 
 const VERSION = "0.1.0";
 
@@ -69,6 +76,52 @@ server.registerTool(
       const start = start_line ?? 1;
       const end = Math.min(end_line ?? lines.length, lines.length);
       return `[${rel} lines ${start}-${end} of ${lines.length}]\n` + lines.slice(start - 1, end).join("\n");
+    });
+  }),
+);
+
+server.registerTool(
+  "get_outline",
+  {
+    title: "Get document outline",
+    description:
+      "Show the section structure (\\part, \\chapter, \\section, ...) of the document, following \\input/\\include from the main file, with file and line numbers.",
+    inputSchema: {
+      project: projectArg,
+      main_file: z.string().optional().describe("Main .tex file. Detected automatically if omitted."),
+    },
+  },
+  async ({ project, main_file }) => run(async () => {
+    const id = await store.resolve(project);
+    return store.read(id, async (co) => {
+      const files = await readAllText(co.dir);
+      const main = main_file ?? findMainFile(files);
+      return `Main file: ${main ?? "(not found)"}\n\n` + formatOutline(parseOutline(files, main));
+    });
+  }),
+);
+
+server.registerTool(
+  "read_section",
+  {
+    title: "Read a section",
+    description: "Read the LaTeX source of one section by its title (case-insensitive; partial titles work if unambiguous).",
+    inputSchema: {
+      project: projectArg,
+      title: z.string().describe("Section title, e.g. 'Related Work'"),
+      file: z.string().optional().describe("Restrict the search to this file."),
+    },
+  },
+  async ({ project, title, file }) => run(async () => {
+    const id = await store.resolve(project);
+    return store.read(id, async (co) => {
+      const files = await readAllText(co.dir);
+      const headings = parseOutline(files);
+      const h = findHeading(headings, title, file);
+      const content = files.get(h.file) ?? "";
+      const { start, end } = sectionRange(headings, h, content);
+      const body = content.split(/\r?\n/).slice(start - 1, end).join("\n");
+      return `[${h.file} lines ${start}-${end}]\n${body}`;
     });
   }),
 );

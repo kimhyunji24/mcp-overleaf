@@ -107,3 +107,14 @@ export async function readText(root: string, rel: string): Promise<string> {
   if (isBinary(buf)) throw new Error(`${rel} is a binary file and cannot be read as text.`);
   return buf.toString("utf8");
 }
+
+/** Read every text file in the project (used for outline parsing and comment lookup). */
+export async function readAllText(root: string): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  for (const rel of await listFiles(root)) {
+    if (!/\.(tex|ltx|sty|cls|bib|bbl|txt|md|cfg|def)$/i.test(rel)) continue;
+    const buf = await fs.readFile(safeJoin(root, rel));
+    if (!isBinary(buf)) files.set(rel, buf.toString("utf8"));
+  }
+  return files;
+}
