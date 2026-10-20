@@ -100,7 +100,7 @@ test("safeJoin rejects traversal and .git", () => {
 });
 
 test("splitSocketFrames handles single and framed socket.io 0.9 payloads", async () => {
-  const { splitSocketFrames } = await import("./web.js");
+  const { splitSocketFrames } = await import("./realtime.js");
   assert.deepEqual(splitSocketFrames("1::"), ["1::"]);
   const F = "�";
   assert.deepEqual(splitSocketFrames(`${F}3${F}1::${F}9${F}5:::{"a"}`), ["1::", '5:::{"a"}']);

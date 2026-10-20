@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -44,6 +46,7 @@ const projectArg = z
   .string()
   .optional()
   .describe("Project ID, Overleaf project URL, or project name. Defaults to OVERLEAF_PROJECT_ID.");
+
 
 server.registerTool(
   "list_projects",
@@ -281,6 +284,191 @@ server.registerTool(
     }),
 );
 
+/** Project-relative path in Overleaf's form: forward slashes, no leading/trailing slash. */
+function normPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+
+server.registerTool(
+  "delete_file",
+  {
+    title: "Delete a file or folder",
+    description:
+      "Delete a file or folder from the Overleaf project. Deleted files can be restored from Overleaf's History. Uses Git when available, otherwise the web session cookie.",
+    inputSchema: {
+      project: projectArg,
+      path: z.string().describe("File or folder path relative to the project root."),
+      commit_message: z.string().optional(),
+    },
+  },
+  async ({ project, path: rel, commit_message }) =>
+    run(async () => {
+      const id = await store.resolve(project);
+      const target = normPath(rel);
+      return store.write(id, async (co) => {
+        const full = safeJoin(co.dir, target);
+        if (co.mode === "git") {
+          if (!existsSync(full)) throw new Error(`Not found in project: ${target}`);
+          await git.run(["rm", "-r", "--quiet", "--", target], co.dir);
+          return `Deleted ${target}. ${await git.commitAndPush(co.dir, [target], commit_message ?? `Delete ${target} via overleaf-mcp`)}`;
+        }
+        const entity = (await web.getEntities(id)).get(target);
+        if (!entity) throw new Error(`Not found in project: ${target}`);
+        await web.deleteEntity(id, entity);
+        store.invalidate(id);
+        return `Deleted ${entity.type === "folder" ? "folder" : "file"} ${target} on Overleaf (restorable from History).`;
+      });
+    }),
+);
+
+server.registerTool(
+  "move_file",
+  {
+    title: "Rename or move a file",
+    description:
+      "Rename and/or move a file or folder within the project, e.g. intro.tex → sections/introduction.tex. Missing target folders are created. Remember to update \\input/\\include references. Uses Git when available, otherwise the web session cookie.",
+    inputSchema: {
+      project: projectArg,
+      path: z.string().describe("Current path."),
+      new_path: z.string().describe("New path."),
+      commit_message: z.string().optional(),
+    },
+  },
+  async ({ project, path: rel, new_path, commit_message }) =>
+    run(async () => {
+      const id = await store.resolve(project);
+      const from = normPath(rel);
+      const to = normPath(new_path);
+      if (from === to) throw new Error("path and new_path are the same.");
+      return store.write(id, async (co) => {
+        safeJoin(co.dir, from);
+        const toFull = safeJoin(co.dir, to);
+        if (co.mode === "git") {
+          await fs.mkdir(path.dirname(toFull), { recursive: true });
+          await git.run(["mv", "--", from, to], co.dir);
+          const result = await git.commitAndPush(co.dir, [from, to], commit_message ?? `Move ${from} to ${to} via overleaf-mcp`);
+          return `Moved ${from} → ${to}. ${result}`;
+        }
+
+        const entities = await web.getEntities(id);
+        const entity = entities.get(from);
+        if (!entity) throw new Error(`Not found in project: ${from}`);
+        if (entities.has(to)) throw new Error(`${to} already exists.`);
+
+        const fromDir = path.posix.dirname(from);
+        const toDir = path.posix.dirname(to);
+        if (fromDir !== toDir) {
+          // Walk/create the target folder chain.
+          let folderId = await web.getRootFolderId(id);
+          let prefix = "";
+          for (const seg of toDir === "." ? [] : toDir.split("/")) {
+            prefix = prefix ? `${prefix}/${seg}` : seg;
+            const existing = entities.get(prefix);
+            if (existing && existing.type !== "folder") throw new Error(`${prefix} is a file, not a folder.`);
+            folderId = existing?.id ?? (await web.createFolder(id, folderId, seg));
+          }
+          await web.moveEntity(id, entity, folderId);
+        }
+        if (path.posix.basename(from) !== path.posix.basename(to)) {
+          await web.renameEntity(id, entity, path.posix.basename(to));
+        }
+        store.invalidate(id);
+        return `Moved ${from} → ${to} on Overleaf.`;
+      });
+    }),
+);
+
+/** A new comment thread ID in the same 24-hex shape Overleaf's editor generates. */
+function newThreadId(): string {
+  return Math.floor(Date.now() / 1000).toString(16).padStart(8, "0") + randomBytes(8).toString("hex");
+}
+
+server.registerTool(
+  "add_comment",
+  {
+    title: "Add a review comment",
+    description:
+      "Start a new review comment thread on a passage of a .tex file, as if highlighting it in the Overleaf editor. Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      project: projectArg,
+      path: z.string().describe("File the passage is in."),
+      text: z.string().min(1).describe("Exact passage to comment on (as it appears in the file)."),
+      comment: z.string().min(1).describe("Comment text."),
+      occurrence: z.number().int().positive().optional().describe("Which match to use if `text` appears more than once (1-based)."),
+    },
+  },
+  async ({ project, path: rel, text, comment, occurrence }) =>
+    run(async () => {
+      const id = await store.resolve(project);
+      const target = normPath(rel);
+      const anchor = text.replace(/\r\n/g, "\n");
+      return web.withRealtime(id, async (rt) => {
+        const entity = rt.entities.get(target);
+        if (!entity || entity.type !== "doc") throw new Error(`${target} is not an editable text file in this project.`);
+        const doc = await rt.joinDoc(entity.id);
+        try {
+          const positions: number[] = [];
+          for (let i = doc.text.indexOf(anchor); i !== -1; i = doc.text.indexOf(anchor, i + 1)) positions.push(i);
+          if (!positions.length) throw new Error(`Passage not found in ${target}. Read the file and copy the text exactly.`);
+          if (positions.length > 1 && !occurrence) {
+            throw new Error(`Passage occurs ${positions.length} times in ${target}; pass a longer passage or \`occurrence\`.`);
+          }
+          const p = positions[(occurrence ?? 1) - 1];
+          if (p === undefined) throw new Error(`Only ${positions.length} occurrence(s) found.`);
+
+          const threadId = newThreadId();
+          await web.postThreadMessage(id, threadId, comment);
+          await rt.applyOps(entity.id, doc.version, [{ c: anchor, p, t: threadId }]);
+          return `Added comment on ${target}:${lineOfOffset(doc.text, p)} "${anchor.slice(0, 80)}" (thread ${threadId}).`;
+        } finally {
+          await rt.leaveDoc(entity.id);
+        }
+      });
+    }),
+);
+
+server.registerTool(
+  "reply_comment",
+  {
+    title: "Reply to a comment",
+    description: "Add a reply to an existing comment thread (thread IDs come from get_comments). Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      project: projectArg,
+      thread_id: z.string().regex(/^[0-9a-f]{24}$/i).describe("Thread ID from get_comments."),
+      content: z.string().min(1).describe("Reply text."),
+    },
+  },
+  async ({ project, thread_id, content }) =>
+    run(async () => {
+      const id = await store.resolve(project);
+      const threads = await web.getThreads(id);
+      if (!threads[thread_id]) throw new Error(`No comment thread ${thread_id}. Use get_comments to list threads.`);
+      await web.postThreadMessage(id, thread_id, content);
+      return `Replied to thread ${thread_id}.`;
+    }),
+);
+
+server.registerTool(
+  "resolve_comment",
+  {
+    title: "Resolve or reopen a comment",
+    description: "Mark a comment thread as resolved, or reopen a resolved one. Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      project: projectArg,
+      thread_id: z.string().regex(/^[0-9a-f]{24}$/i).describe("Thread ID from get_comments."),
+      reopen: z.boolean().optional().describe("Reopen instead of resolve."),
+    },
+  },
+  async ({ project, thread_id, reopen }) =>
+    run(async () => {
+      const id = await store.resolve(project);
+      const doc = (await web.getRanges(id)).find((d) => d.ranges?.comments?.some((c) => c.op.t === thread_id));
+      if (!doc) throw new Error(`No comment thread ${thread_id} is attached to any document.`);
+      await web.setThreadResolved(id, doc.id, thread_id, !reopen);
+      return `${reopen ? "Reopened" : "Resolved"} thread ${thread_id}.`;
+    }),
+);
+
 function formatEntries(entries: LogEntry[], limit: number): string {
   const shown = entries.slice(0, limit).map((e) => {
     const loc = e.file ? `${e.file}${e.line ? `:${e.line}` : ""}` : e.line ? `line ${e.line}` : "";
@@ -403,7 +591,6 @@ server.registerTool(
     return out.length ? out.join("\n\n") : "No open comments.";
   }),
 );
-
 
 async function main(): Promise<void> {
   if (!cfg.gitToken && !cfg.sessionCookie) {

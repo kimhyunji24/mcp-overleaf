@@ -137,6 +137,11 @@ export class ProjectStore {
     return this.withLock(id, async () => fn(await this.open(id, true)));
   }
 
+  /** Forget the cached snapshot so the next read re-downloads (after changes made through the web API). */
+  invalidate(id: string): void {
+    this.lastSync.delete(`zip:${id}`);
+  }
+
   /** Send files changed in a checkout back to Overleaf: git commit+push, or web upload without Git. */
   async save(id: string, co: Checkout, files: string[], message: string): Promise<string> {
     if (co.mode === "git") return this.git.commitAndPush(co.dir, files, message);
