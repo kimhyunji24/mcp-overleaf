@@ -10,11 +10,13 @@ import {
   findHeading,
   findMainFile,
   formatOutline,
+  parseLog,
   parseOutline,
   sectionRange,
+  type LogEntry,
 } from "./latex.js";
 import { ProjectStore, listFiles, readAllText, readText, safeJoin } from "./project.js";
-import { OverleafWeb } from "./web.js";
+import { OverleafWeb, type CompileResult } from "./web.js";
 
 const VERSION = "0.1.0";
 
@@ -209,6 +211,83 @@ server.registerTool(
       const result = await git.commitAndPush(co.dir, [rel], commit_message ?? `Edit ${rel} via overleaf-mcp`);
       return `Replaced ${replace_all ? count : 1} occurrence(s) in ${rel}. ${result}`;
     });
+  }),
+);
+
+function formatEntries(entries: LogEntry[], limit: number): string {
+  const shown = entries.slice(0, limit).map((e) => {
+    const loc = e.file ? `${e.file}${e.line ? `:${e.line}` : ""}` : e.line ? `line ${e.line}` : "";
+    return `- ${loc ? `[${loc}] ` : ""}${e.message}`;
+  });
+  if (entries.length > limit) shown.push(`- ... and ${entries.length - limit} more`);
+  return shown.join("\n");
+}
+
+async function compileAndLog(id: string, draft?: boolean): Promise<{ result: CompileResult; log: string }> {
+  const result = await web.compile(id, { draft });
+  const logFile = result.outputFiles.find((f) => f.path === "output.log");
+  const log = logFile ? await (await web.fetchOutputFile(result, logFile)).text() : "";
+  return { result, log };
+}
+
+server.registerTool(
+  "compile",
+  {
+    title: "Compile project",
+    description:
+      "Compile the project on Overleaf and report errors and warnings with file and line numbers. Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      project: projectArg,
+      draft: z.boolean().optional().describe("Fast draft compile (no images)."),
+      include_warnings: z.boolean().optional().describe("List warnings (default true)."),
+      include_badboxes: z.boolean().optional().describe("List overfull/underfull box warnings (default false)."),
+      raw_log_lines: z.number().int().min(0).max(2000).optional().describe("Also return the last N lines of the raw log."),
+    },
+  },
+  async ({ project, draft, include_warnings = true, include_badboxes = false, raw_log_lines = 0 }) => run(async () => {
+    const id = await store.resolve(project);
+    const { result, log } = await compileAndLog(id, draft);
+    const entries = parseLog(log);
+    const errors = entries.filter((e) => e.level === "error");
+    const warnings = entries.filter((e) => e.level === "warning");
+    const badboxes = entries.filter((e) => e.level === "badbox");
+    const hasPdf = result.outputFiles.some((f) => f.path === "output.pdf");
+
+    const parts = [
+      `Status: ${result.status}${hasPdf ? " (PDF produced)" : " (no PDF)"}`,
+      `Errors: ${errors.length}, warnings: ${warnings.length}, bad boxes: ${badboxes.length}`,
+    ];
+    if (result.status === "timedout") parts.push("The compile timed out. Try draft mode or check for heavy figures.");
+    if (result.status === "too-recently-compiled") parts.push("Overleaf rate-limited this compile; wait a few seconds and retry.");
+    if (errors.length) parts.push(`\nErrors:\n${formatEntries(errors, 50)}`);
+    if (include_warnings && warnings.length) parts.push(`\nWarnings:\n${formatEntries(warnings, 40)}`);
+    if (include_badboxes && badboxes.length) parts.push(`\nBad boxes:\n${formatEntries(badboxes, 40)}`);
+    if (raw_log_lines > 0) parts.push(`\nLog tail:\n${log.split(/\r?\n/).slice(-raw_log_lines).join("\n")}`);
+    if (!log) parts.push("\n(No log file was returned.)");
+    return parts.join("\n");
+  }),
+);
+
+server.registerTool(
+  "download_pdf",
+  {
+    title: "Download compiled PDF",
+    description: "Compile the project and save the PDF to a local path. Requires OVERLEAF_SESSION_COOKIE.",
+    inputSchema: {
+      project: projectArg,
+      output_path: z.string().optional().describe("Where to save the PDF. Defaults to the cache directory."),
+    },
+  },
+  async ({ project, output_path }) => run(async () => {
+    const id = await store.resolve(project);
+    const result = await web.compile(id);
+    const pdf = result.outputFiles.find((f) => f.path === "output.pdf");
+    if (!pdf) throw new Error(`Compile finished with status "${result.status}" and produced no PDF. Run compile to see errors.`);
+    const data = Buffer.from(await (await web.fetchOutputFile(result, pdf)).arrayBuffer());
+    const target = path.resolve(output_path ?? path.join(cfg.cacheDir, "pdf", `${id}.pdf`));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, data);
+    return `Saved ${(data.length / 1024).toFixed(0)} KB PDF to ${target}`;
   }),
 );
 

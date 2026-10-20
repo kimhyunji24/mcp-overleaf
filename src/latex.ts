@@ -123,3 +123,84 @@ export function sectionRange(headings: Heading[], h: Heading, content: string): 
   while (end > h.line && !lines[end - 1].trim()) end--;
   return { start: h.line, end };
 }
+
+export interface LogEntry {
+  level: "error" | "warning" | "badbox";
+  message: string;
+  file?: string;
+  line?: number;
+}
+
+/** Best-effort parser for pdfTeX/XeTeX/LuaTeX .log output. */
+export function parseLog(log: string): LogEntry[] {
+  const entries: LogEntry[] = [];
+  const lines = log.split(/\r?\n/);
+  const stack: (string | null)[] = [];
+  const currentFile = (): string | undefined => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const f = stack[i];
+      if (f && !/^\/(usr|opt|texlive)|texmf/.test(f)) return f.replace(/^\.\//, "");
+    }
+    return undefined;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith("! ")) {
+      let lineNo: number | undefined;
+      const context: string[] = [];
+      for (let j = i + 1; j < Math.min(i + 12, lines.length); j++) {
+        const m = lines[j].match(/^l\.(\d+)\s?(.*)$/);
+        if (m) {
+          lineNo = Number(m[1]);
+          if (m[2].trim()) context.push(m[2].trim());
+          break;
+        }
+      }
+      entries.push({
+        level: "error",
+        message: line.slice(2).trim() + (context.length ? ` — near: ${context.join(" ")}` : ""),
+        file: currentFile(),
+        line: lineNo,
+      });
+      continue;
+    }
+
+    const warn = line.match(/^((?:LaTeX|Package [\w.-]+|Class [\w.-]+)) Warning: (.*)$/);
+    if (warn) {
+      let message = warn[2];
+      // Package warnings continue on lines prefixed with "(pkgname)" or plain text until a blank line.
+      for (let j = i + 1; j < lines.length && lines[j].trim() && !/Warning:|^!/.test(lines[j]); j++) {
+        message += " " + lines[j].replace(/^\([\w.-]+\)\s*/, "").trim();
+        i = j;
+      }
+      const lineNo = message.match(/on input line (\d+)/);
+      entries.push({
+        level: "warning",
+        message: `${warn[1]}: ${message.replace(/\s+/g, " ").trim()}`,
+        file: currentFile(),
+        line: lineNo ? Number(lineNo[1]) : undefined,
+      });
+      continue;
+    }
+
+    const badbox = line.match(/^((?:Over|Under)full \\[hv]box .*?)(?: (?:in paragraph|detected|has occurred while \\output is active))? at lines? (\d+)/);
+    if (badbox) {
+      entries.push({ level: "badbox", message: badbox[1], file: currentFile(), line: Number(badbox[2]) });
+      continue;
+    }
+
+    // Track which file TeX is in from "(./file.tex" ... ")" nesting.
+    for (let k = 0; k < line.length; k++) {
+      if (line[k] === "(") {
+        const m = line.slice(k + 1).match(/^"?((?:\.{0,2}\/|[A-Za-z]:\/)?[^\s()"]+\.[A-Za-z]{2,4})/);
+        stack.push(m ? m[1] : null);
+      } else if (line[k] === ")") {
+        stack.pop();
+      }
+    }
+  }
+  return entries;
+}
+

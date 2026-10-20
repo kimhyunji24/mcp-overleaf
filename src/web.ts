@@ -11,6 +11,21 @@ export interface ProjectSummary {
   trashed?: boolean;
 }
 
+export interface OutputFile {
+  path: string;
+  url: string;
+  type?: string;
+  build?: string;
+}
+
+export interface CompileResult {
+  status: string;
+  outputFiles: OutputFile[];
+  clsiServerId?: string;
+  compileGroup?: string;
+  pdfDownloadDomain?: string;
+}
+
 function decodeHtml(s: string): string {
   return s
     .replace(/&quot;|&#34;/g, '"')
@@ -135,5 +150,53 @@ export class OverleafWeb {
     const res = await this.request(`/project/${projectId}/download/zip`);
     if (!res.ok) throw new Error(`Downloading project ${projectId} failed: HTTP ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async compile(projectId: string, opts: { draft?: boolean } = {}): Promise<CompileResult> {
+    this.requireEnabled("Compiling");
+    const body = JSON.stringify({
+      rootDoc_id: null,
+      draft: !!opts.draft,
+      check: "silent",
+      incrementalCompilesEnabled: true,
+      stopOnFirstError: false,
+    });
+    for (const refresh of [false, true]) {
+      const res = await this.request(`/project/${projectId}/compile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Csrf-Token": await this.getCsrf(refresh),
+        },
+        body,
+      });
+      if (res.status === 403 && !refresh) continue; // stale CSRF token; retry once with a fresh one
+      if (!res.ok) throw new Error(`Compile request failed: HTTP ${res.status}`);
+      const data = (await res.json()) as CompileResult;
+      data.outputFiles ??= [];
+      return data;
+    }
+    throw new Error("Compile request was rejected (HTTP 403).");
+  }
+
+  async fetchOutputFile(result: CompileResult, file: OutputFile): Promise<Response> {
+    const params = new URLSearchParams();
+    if (result.compileGroup) params.set("compileGroup", result.compileGroup);
+    if (result.clsiServerId) params.set("clsiserverid", result.clsiServerId);
+    const rel = file.url + (file.url.includes("?") ? "&" : "?") + params.toString();
+
+    let lastError = "";
+    for (const base of [result.pdfDownloadDomain, this.cfg.baseUrl]) {
+      if (!base) continue;
+      try {
+        const res = await this.request(base.replace(/\/+$/, "") + rel);
+        if (res.ok) return res;
+        lastError = `HTTP ${res.status}`;
+      } catch (e) {
+        lastError = (e as Error).message;
+      }
+    }
+    throw new Error(`Could not fetch ${file.path}: ${lastError}`);
   }
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { findHeading, findMainFile, parseOutline, sectionRange, stripComment } from "./latex.js";
+import { findHeading, findMainFile, parseLog, parseOutline, sectionRange, stripComment } from "./latex.js";
 import { safeJoin } from "./project.js";
 
 const files = new Map<string, string>([
@@ -55,6 +55,39 @@ test("sectionRange stops at next same-level heading and \\end{document}", () => 
 
 test("findHeading reports ambiguity", () => {
   assert.throws(() => findHeading(parseOutline(files), "i"), /several sections/);
+});
+
+test("parseLog extracts errors, warnings and bad boxes with locations", () => {
+  const log = [
+    "(./main.tex",
+    "LaTeX2e <2023-11-01>",
+    "(./sections/method.tex",
+    "! Undefined control sequence.",
+    "l.12 \\foo",
+    "        {bar}",
+    ")",
+    "LaTeX Warning: Citation `smith' on page 1 undefined on input line 7.",
+    "",
+    "Package hyperref Warning: Token not allowed in a PDF string",
+    "(hyperref)                removing `math shift' on input line 3.",
+    "",
+    "Overfull \\hbox (12.3pt too wide) in paragraph at lines 20--22",
+    ")",
+  ].join("\n");
+  const entries = parseLog(log);
+  assert.equal(entries.length, 4);
+  assert.deepEqual(entries[0], {
+    level: "error",
+    message: "Undefined control sequence. — near: \\foo",
+    file: "sections/method.tex",
+    line: 12,
+  });
+  assert.equal(entries[1].file, "main.tex");
+  assert.equal(entries[1].line, 7);
+  assert.match(entries[2].message, /hyperref: Token not allowed.*removing/);
+  assert.equal(entries[2].line, 3);
+  assert.equal(entries[3].level, "badbox");
+  assert.equal(entries[3].line, 20);
 });
 
 test("safeJoin rejects traversal and .git", () => {
