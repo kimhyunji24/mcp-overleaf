@@ -1,5 +1,7 @@
 # mcp-overleaf
 
+**English** | [한국어](README.ko.md)
+
 An [MCP](https://modelcontextprotocol.io) server that lets Claude, Cursor, and other MCP clients **read, edit, compile and review** your Overleaf LaTeX projects — and lets you **write in Markdown and publish to Overleaf as LaTeX**.
 
 > **Unofficial.** mcp-overleaf is an independent open-source project. It is not affiliated with, endorsed by, or supported by Overleaf or Digital Science. "Overleaf" is used only to describe what this tool works with. You are responsible for following [Overleaf's Terms of Service and Acceptable Use Policy](https://www.overleaf.com/legal) when you use it.
@@ -22,6 +24,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets Claude, Cursor, and o
 | `resolve_comment` | Resolve or reopen a comment thread | web¹ |
 | `move_file` | Rename or move a file or folder (creates target folders) | git, or web¹ |
 | `delete_file` | Delete a file or folder (restorable from History) | git, or web¹ |
+| `setup_paper_language` | Prepare a project for Korean (kotex + XeLaTeX) or English papers | git, or web¹ |
 
 ¹ **web** = the optional web mode, which is off by default; see [Overleaf's terms and web mode](#overleafs-terms-and-web-mode). With only a Git token you get reading, outlines, Markdown writing, editing, moving and deleting files.
 
@@ -75,6 +78,14 @@ Where it goes:
 - `dry_run: true`: show the LaTeX without pushing anything.
 
 The tool warns when the output needs a package your preamble doesn't load (e.g. `hyperref` for links, `graphicx` for figures).
+
+## Korean and English
+
+**Papers.** English papers need no setup. For Korean papers, run `setup_paper_language` with `language: "ko"` once. It adds `\usepackage{kotex}` to the main file's preamble (unless a Korean package such as kotex or xeCJK is already loaded) and switches the compiler to XeLaTeX. Switching the compiler needs web mode; without it, the tool tells you how to do it in Overleaf (Menu → Settings → Compiler).
+
+You don't have to remember this step. `write_markdown` warns when you write Korean into a project without Korean support, and `compile` adds a hint when errors come from Korean characters (`Unicode character 한 (U+D55C)`). The Markdown converter also handles Korean particles written directly after references and citations, so `@fig:arch를` becomes `\ref{fig:arch}를` and `[@kim2024]에서` becomes `\cite{kim2024}에서`.
+
+**Responses.** Set `OVERLEAF_LANG=ko` to get tool results, errors and warnings in Korean (the default is `en`). Messages that come straight from Overleaf or git stay as they are.
 
 ## Credentials
 
@@ -139,6 +150,7 @@ On Windows, if the client cannot find `npx`, use `"command": "cmd"` and `"args":
 | `OVERLEAF_ENABLE_WEB` | off | Set to `1` to opt in to web mode, at your own risk |
 | `OVERLEAF_SESSION_COOKIE` | | `overleaf_session2` value, or a full `name=value` cookie string for other instances. Used only in web mode |
 | `OVERLEAF_PROJECT_ID` | | Default project when a tool call omits `project` |
+| `OVERLEAF_LANG` | `en` | Language of tool responses: `en` or `ko` |
 | `OVERLEAF_BASE_URL` | `https://www.overleaf.com` | Self-hosted / Community Edition URL |
 | `OVERLEAF_GIT_URL` | `https://git.overleaf.com` | Git bridge URL. For Server Pro use `https://<your-site>/git` |
 | `OVERLEAF_MCP_CACHE_DIR` | `~/.mcp-overleaf` | Where project copies and PDFs are kept |
