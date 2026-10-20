@@ -1,2 +1,3 @@
 # mcp-overleaf
-MCP of Overleaf
+
+MCP of Overleaf. Work in progress.
