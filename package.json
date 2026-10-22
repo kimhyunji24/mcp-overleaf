@@ -23,7 +23,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "start:http": "node dist/http.js",
-    "test": "tsc && node --test dist/latex.test.js dist/markdown.test.js dist/config.test.js dist/i18n.test.js",
+    "test": "tsc && node --test dist/latex.test.js dist/markdown.test.js dist/config.test.js dist/i18n.test.js dist/git.test.js",
     "smoke": "node --env-file=.env scripts/smoke.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "prepack": "npm run build"
