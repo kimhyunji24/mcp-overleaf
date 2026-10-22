@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { Config } from "./config.js";
 import { t } from "./i18n.js";
@@ -71,14 +73,23 @@ export class GitClient {
 
   /** Commit the given paths and push. Returns a short description of what happened. */
   async commitAndPush(dir: string, paths: string[], message: string): Promise<string> {
-    await this.run(["add", "--all", "--", ...paths], dir);
-    const status = await this.run(["status", "--porcelain"], dir);
-    if (!status.trim()) return t.gitNothingToCommit();
+    // Paths already removed with `git rm`/`git mv` are staged and gone from disk; naming them
+    // again makes `git add` fail with "pathspec did not match any files".
+    const present = paths.filter((p) => existsSync(path.join(dir, p)));
+    try {
+      if (present.length) await this.run(["add", "--all", "--", ...present], dir);
+      const status = await this.run(["status", "--porcelain"], dir);
+      if (!status.trim()) return t.gitNothingToCommit();
 
-    await this.run(
-      ["-c", `user.name=${this.cfg.authorName}`, "-c", `user.email=${this.cfg.authorEmail}`, "commit", "--quiet", "-m", message],
-      dir,
-    );
+      await this.run(
+        ["-c", `user.name=${this.cfg.authorName}`, "-c", `user.email=${this.cfg.authorEmail}`, "commit", "--quiet", "-m", message],
+        dir,
+      );
+    } catch (e) {
+      // Don't leave staged or half-committed changes behind to break the next pull.
+      await this.run(["reset", "--hard", "--quiet", "@{u}"], dir).catch(() => {});
+      throw e;
+    }
     try {
       await this.run(["push", "--quiet"], dir);
     } catch {
