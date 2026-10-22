@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="mcp-overleaf">
+  <style>
+    .tile { fill: #111111; }
+    .glyph { fill: #ffffff; }
+    .accent { fill: #3ddc97; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #f5f5f5; }
+      .glyph { fill: #111111; }
+      .accent { fill: #1a9e66; }
+    }
+  </style>
+  <rect class="tile" x="4" y="4" width="152" height="152" rx="34"/>
+  <text class="glyph" x="40" y="99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="54" font-weight="700" text-anchor="middle">#</text>
+  <path class="accent" d="M66 74 h20 v-10 l16 16 -16 16 v-10 h-20 z"/>
+  <text class="glyph" x="124" y="99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="54" font-weight="700" text-anchor="middle">\</text>
+</svg>
