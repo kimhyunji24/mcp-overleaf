@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,7 +27,7 @@ import {
 import { ProjectStore, listFiles, readAllText, readText, safeJoin } from "./project.js";
 import { OverleafWeb, type CompileResult } from "./web.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.2";
 
 /**
  * Build an isolated MCP server for one credential set. The HTTP entrypoint calls
@@ -654,7 +654,15 @@ async function main(): Promise<void> {
   );
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// npx and global installs start us through a symlink in node_modules/.bin, so compare real paths.
+const isEntryPoint = (() => {
+  try {
+    return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isEntryPoint) {
   main().catch((e) => {
     console.error(e);
     process.exit(1);
