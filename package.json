@@ -1,6 +1,6 @@
 {
   "name": "mcp-overleaf",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Unofficial MCP server for Overleaf: read, edit and write LaTeX projects (in Markdown too) from Claude, Cursor and other MCP clients. Not affiliated with Overleaf.",
   "author": "Hyunji KIM",
   "repository": {
