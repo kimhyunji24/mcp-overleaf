@@ -22,6 +22,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:http": "node dist/http.js",
     "test": "tsc && node --test dist/latex.test.js dist/markdown.test.js dist/config.test.js dist/i18n.test.js",
     "smoke": "node --env-file=.env scripts/smoke.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
@@ -41,6 +42,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
     "fflate": "^0.8.2",
+    "jose": "^6.1.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -28,7 +29,12 @@ import { OverleafWeb, type CompileResult } from "./web.js";
 
 const VERSION = "0.1.0";
 
-const cfg = loadConfig();
+/**
+ * Build an isolated MCP server for one credential set. The HTTP entrypoint calls
+ * this once per authenticated request so user A can never inherit user B's
+ * Overleaf token or project cache. The stdio entrypoint uses the process config.
+ */
+export function createServer(cfg: ReturnType<typeof loadConfig>): McpServer {
 setLang(cfg.lang);
 const web = new OverleafWeb(cfg);
 const git = new GitClient(cfg);
@@ -632,17 +638,25 @@ server.registerTool(
     }),
 );
 
+return server;
+}
+
 async function main(): Promise<void> {
-  if (web.enabled) console.error(t.startWebOn());
+  const cfg = loadConfig();
+  const server = createServer(cfg);
+  const webEnabled = cfg.webOptIn && !!cfg.sessionCookie;
+  if (webEnabled) console.error(t.startWebOn());
   else if (cfg.sessionCookie) console.error(t.startCookieIgnored());
-  if (!cfg.gitToken && !web.enabled) console.error(t.startNoGit());
+  if (!cfg.gitToken && !webEnabled) console.error(t.startNoGit());
   await server.connect(new StdioServerTransport());
   console.error(
-    `mcp-overleaf ${VERSION} running (git: ${git.enabled ? "on" : "off"}, web mode: ${web.enabled ? "on" : "off"}, lang: ${cfg.lang})`,
+    `mcp-overleaf ${VERSION} running (git: ${cfg.gitToken ? "on" : "off"}, web mode: ${webEnabled ? "on" : "off"}, lang: ${cfg.lang})`,
   );
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
