@@ -6,6 +6,8 @@
 
 읽고 · 고치고 · 컴파일하고 · 리뷰한다. AI 에이전트가 LaTeX 프로젝트를 망가뜨리지 않고 앞으로 보냅니다.
 
+> **ChatGPT MCP를 지원합니다.** 원격 서버를 배포한 뒤 ChatGPT Plugins에 HTTPS `/mcp` 주소를 넣고 Auth0로 로그인하세요. [설정 방법 →](#chatgpt--codex-원격-mcp-실험-기능)
+
 ---
 
 서론 한 문장을 고치려는데, 에이전트가 프로젝트 전체를 새로 쓰고 프리앰블을 지운 적 있나요?
@@ -22,7 +24,7 @@ mcp-overleaf는 Overleaf를 AI 에이전트 안으로 가져옵니다.
 
 ## 지금 할 수 있는 일
 
-Claude Code, Claude Desktop, Cursor와 표준 MCP 클라이언트에서 바로 동작합니다. ChatGPT와 Codex에서는 Auth0로 로그인하는 원격 MCP(Streamable HTTP, 실험 기능)로 연결할 수 있습니다.
+Claude Code, Claude Desktop, Cursor와 표준 MCP 클라이언트에서 바로 동작합니다. **ChatGPT MCP도 지원합니다.** Auth0로 로그인하는 원격 Streamable HTTP 모드로 연결해 ChatGPT 대화에서 내 Overleaf 프로젝트를 읽고 쓸 수 있습니다.
 
 | 하고 싶은 일 | 도구 |
 |---|---|

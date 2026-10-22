@@ -6,6 +6,8 @@ Think in Markdown. Ship the paper in Overleaf.
 
 Read · edit · compile · review. Your AI agent moves a LaTeX project forward without trampling it.
 
+> **ChatGPT MCP supported.** Deploy the remote server, add its HTTPS `/mcp` URL in ChatGPT Plugins, then sign in with Auth0. [Set it up →](#chatgpt--codex-remote-mcp-experimental)
+
 ---
 
 Ever asked an agent to fix one line in an introduction, only for it to rewrite the project and erase the preamble?
@@ -22,7 +24,7 @@ mcp-overleaf puts Overleaf inside your AI agent.
 
 ## What it does today
 
-Works with Claude Code, Claude Desktop, Cursor, and standard MCP clients out of the box. ChatGPT and Codex can connect through the experimental remote Streamable HTTP mode, authenticated with Auth0.
+Works with Claude Code, Claude Desktop, Cursor, and standard MCP clients out of the box. **ChatGPT MCP is supported** through remote Streamable HTTP with Auth0 sign-in; use it to read and write your own Overleaf projects from a ChatGPT conversation.
 
 | What you want to do | Tool |
 |---|---|
