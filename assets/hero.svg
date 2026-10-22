@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" width="880" height="380" role="img" aria-label="Markdown on the left becomes LaTeX in your Overleaf project on the right">
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #d6d6d6; }
+    .label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 12px; fill: #8b8b8b; letter-spacing: .04em; }
+    .kw { fill: #3ddc97; }
+    .ref { fill: #7cc4ff; }
+    .math { fill: #f2c36b; }
+    .dim { fill: #8b8b8b; }
+    .tool { font-size: 12px; fill: #111111; font-weight: 700; }
+  </style>
+  <rect x="0" y="0" width="880" height="380" rx="18" fill="#111111"/>
+
+  <!-- left: Markdown -->
+  <rect x="24" y="24" width="372" height="332" rx="12" fill="#1b1b1b"/>
+  <circle cx="44" cy="44" r="5" fill="#3a3a3a"/><circle cx="60" cy="44" r="5" fill="#3a3a3a"/><circle cx="76" cy="44" r="5" fill="#3a3a3a"/>
+  <text class="label" x="376" y="48" text-anchor="end">YOU WRITE · method.md</text>
+  <text x="44" y="92"><tspan class="kw">## Method</tspan> <tspan class="dim">{#sec:method}</tspan></text>
+  <text x="44" y="128">We fine-tune the model of</text>
+  <text x="44" y="148"><tspan class="ref">@sec:background</tspan> on our data</text>
+  <text x="44" y="168"><tspan class="ref">[@smith2020; @lee2021]</tspan>.</text>
+  <text x="44" y="204"><tspan class="math">$$ \theta^* = \arg\min \mathcal{L} $$</tspan></text>
+  <text x="44" y="224" class="dim">{#eq:opt}</text>
+  <text x="44" y="260"><tspan class="kw">![Pipeline]</tspan>(figs/pipeline.pdf)</text>
+  <text x="44" y="280" class="dim">{#fig:pipe width=80%}</text>
+
+  <!-- arrow -->
+  <rect x="404" y="172" width="72" height="36" rx="18" fill="#3ddc97"/>
+  <text class="tool" x="440" y="194" text-anchor="middle">→ TeX</text>
+
+  <!-- right: LaTeX -->
+  <rect x="484" y="24" width="372" height="332" rx="12" fill="#1b1b1b"/>
+  <circle cx="504" cy="44" r="5" fill="#3a3a3a"/><circle cx="520" cy="44" r="5" fill="#3a3a3a"/><circle cx="536" cy="44" r="5" fill="#3a3a3a"/>
+  <text class="label" x="836" y="48" text-anchor="end">IN YOUR PROJECT · sections/method.tex</text>
+  <text x="504" y="92"><tspan class="kw">\section</tspan>{Method}<tspan class="kw">\label</tspan>{sec:method}</text>
+  <text x="504" y="128">We fine-tune the model of</text>
+  <text x="504" y="148"><tspan class="ref">\ref{sec:background}</tspan> on our data</text>
+  <text x="504" y="168"><tspan class="ref">\cite{smith2020,lee2021}</tspan>.</text>
+  <text x="504" y="204"><tspan class="kw">\begin</tspan>{equation}</text>
+  <text x="504" y="224"><tspan class="math">\theta^* = \arg\min \mathcal{L}</tspan></text>
+  <text x="504" y="244"><tspan class="kw">\label</tspan>{eq:opt}</text>
+  <text x="504" y="264"><tspan class="kw">\end</tspan>{equation}</text>
+  <text x="504" y="296"><tspan class="kw">\begin</tspan>{figure}[htbp] <tspan class="dim">\centering</tspan></text>
+  <text x="504" y="316" class="dim">\includegraphics[width=0.8\linewidth]{…}</text>
+  <text x="504" y="336" class="dim">\caption{Pipeline}\label{fig:pipe} …</text>
+</svg>
