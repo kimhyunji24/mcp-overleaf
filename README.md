@@ -30,6 +30,8 @@
   <sub>Korean papers too: one call sets up kotex and XeLaTeX.</sub>
 </p>
 
+> **ChatGPT MCP supported.** Deploy the remote server, add its HTTPS `/mcp` URL in ChatGPT Plugins, then sign in with Auth0. [Set it up →](#chatgpt--codex-remote-mcp-experimental)
+
 Ever asked an agent to fix one line in an introduction, only for it to rewrite the project and erase the preamble?
 
 With mcp-overleaf:
@@ -47,7 +49,7 @@ It finds the section, produces the LaTeX, saves it to Overleaf, and leaves a com
 
 ## What it does today
 
-Works with Claude Code, Claude Desktop, Cursor, and standard MCP clients out of the box. ChatGPT and Codex can connect through the experimental remote Streamable HTTP mode, authenticated with Auth0.
+Works with Claude Code, Claude Desktop, Cursor, and standard MCP clients out of the box. **ChatGPT MCP is supported** through remote Streamable HTTP with Auth0 sign-in; use it to read and write your own Overleaf projects from a ChatGPT conversation.
 
 | What you want to do | Tool |
 |---|---|
@@ -63,13 +65,13 @@ Every tool, with what it needs: [Tools](#tools).
 
 Requires Node.js 20+ and git. Get a Git token in Overleaf → Account Settings → *Git Integration* → *Generate token*.
 
-**Claude Code:**
+### Claude Code
 
 ```bash
 claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -- npx -y mcp-overleaf
 ```
 
-**Claude Desktop / Cursor / others:**
+### Claude Desktop / Cursor / others
 
 ```json
 {
@@ -95,7 +97,7 @@ Then just ask:
 
 On Windows, if the client cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "mcp-overleaf"]`. To opt in to web mode, see [Credentials](#credentials).
 
-**ChatGPT / Codex (remote MCP, experimental):**
+### ChatGPT / Codex (remote MCP, experimental)
 
 This mode needs a public HTTPS deployment and Auth0. Each user signs in with Auth0, then registers their own Overleaf Git token through a separate trusted settings page. Never paste an Overleaf token into a chat.
 

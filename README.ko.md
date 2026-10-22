@@ -30,6 +30,8 @@
   <sub>한국어 논문도 됩니다. 한 번만 호출하면 kotex와 XeLaTeX가 설정됩니다.</sub>
 </p>
 
+> **ChatGPT MCP를 지원합니다.** 원격 서버를 배포한 뒤 ChatGPT Plugins에 HTTPS `/mcp` 주소를 넣고 Auth0로 로그인하세요. [설정 방법 →](#chatgpt--codex-원격-mcp-실험-기능)
+
 서론 한 문장을 고치려는데, 에이전트가 프로젝트 전체를 새로 쓰고 프리앰블을 지운 적 있나요?
 
 mcp-overleaf와 함께라면:
@@ -47,7 +49,7 @@ mcp-overleaf와 함께라면:
 
 ## 지금 할 수 있는 일
 
-Claude Code, Claude Desktop, Cursor와 표준 MCP 클라이언트에서 바로 동작합니다. ChatGPT와 Codex에서는 Auth0로 로그인하는 원격 MCP(Streamable HTTP, 실험 기능)로 연결할 수 있습니다.
+Claude Code, Claude Desktop, Cursor와 표준 MCP 클라이언트에서 바로 동작합니다. **ChatGPT MCP도 지원합니다.** Auth0로 로그인하는 원격 Streamable HTTP 모드로 연결해 ChatGPT 대화에서 내 Overleaf 프로젝트를 읽고 쓸 수 있습니다.
 
 | 하고 싶은 일 | 도구 |
 |---|---|
@@ -63,13 +65,13 @@ Claude Code, Claude Desktop, Cursor와 표준 MCP 클라이언트에서 바로 �
 
 Node.js 20 이상과 git이 필요합니다. Git 토큰은 Overleaf → Account Settings → *Git Integration* → *Generate token*에서 만듭니다.
 
-**Claude Code:**
+### Claude Code
 
 ```bash
 claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_LANG=ko -- npx -y mcp-overleaf
 ```
 
-**Claude Desktop / Cursor / 기타:**
+### Claude Desktop / Cursor / 기타
 
 ```json
 {
@@ -96,7 +98,7 @@ claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_LANG=ko -- npx
 
 Windows에서 클라이언트가 `npx`를 찾지 못하면 `"command": "cmd"`, `"args": ["/c", "npx", "-y", "mcp-overleaf"]`를 쓰세요. 웹 모드를 켜는 방법은 [인증](#인증)을 보세요.
 
-**ChatGPT / Codex (원격 MCP, 실험 기능):**
+### ChatGPT / Codex (원격 MCP, 실험 기능)
 
 공개 HTTPS 서버와 Auth0가 필요합니다. 각 사용자는 Auth0로 로그인한 뒤 자신의 Overleaf Git 토큰을 별도의 신뢰할 수 있는 설정 화면에서 등록합니다. 토큰을 채팅에 붙여 넣지 마세요.
 
