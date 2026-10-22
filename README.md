@@ -5,7 +5,7 @@
 <h1 align="center">mcp-overleaf</h1>
 
 <p align="center">
-  <em>Write in Markdown. It lands in Overleaf as LaTeX.</em>
+  <em>Think in Markdown. Ship the paper in Overleaf.</em>
 </p>
 
 <p align="center">
@@ -25,15 +25,39 @@
 </p>
 
 <p align="center">
-  <strong>Read, edit, compile and review your Overleaf projects from Claude, Cursor and other MCP clients.</strong><br>
+  <strong>Read · edit · compile · review.</strong> Your AI agent moves a LaTeX project forward without trampling it.<br>
   Draft in Markdown, and your citations, cross-references, equations, figures and tables arrive as proper LaTeX.<br>
   <sub>Korean papers too: one call sets up kotex and XeLaTeX.</sub>
 </p>
+
+Ever asked an agent to fix one line in an introduction, only for it to rewrite the project and erase the preamble?
+
+With mcp-overleaf:
+
+```text
+“Replace the final paragraph of Methods with this Markdown, then check the compile errors.”
+```
+
+It finds the section, produces the LaTeX, saves it to Overleaf, and leaves a commit when it writes through Git.
 
 > [!NOTE]
 > **Unofficial.** mcp-overleaf is an independent open-source project. It is not affiliated with, endorsed by, or supported by Overleaf or Digital Science. "Overleaf" is used only to describe what this tool works with. You are responsible for following [Overleaf's Terms of Service and Acceptable Use Policy](https://www.overleaf.com/legal) when you use it.
 
 ---
+
+## What it does today
+
+Works with Claude Code, Claude Desktop, Cursor, and standard MCP clients out of the box. ChatGPT and Codex can connect through the experimental remote Streamable HTTP mode, authenticated with Auth0.
+
+| What you want to do | Tool |
+|---|---|
+| Turn a Markdown draft into LaTeX | `write_markdown` |
+| Explore a project and its files | `list_projects`, `list_files`, `read_file`, `get_outline`, `read_section` |
+| Change files safely | `edit_file`, `write_file`, `move_file`, `delete_file` |
+| Compile, get PDFs, and review comments | `compile`, `download_pdf`, `get_comments`, `add_comment`, `reply_comment`, `resolve_comment` |
+| Prepare a Korean or English paper | `setup_paper_language` |
+
+Every tool, with what it needs: [Tools](#tools).
 
 ## Quick start
 
@@ -70,6 +94,17 @@ Then just ask:
 - *"Reply to the open review comments."*
 
 On Windows, if the client cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "mcp-overleaf"]`. To opt in to web mode, see [Credentials](#credentials).
+
+**ChatGPT / Codex (remote MCP, experimental):**
+
+This mode needs a public HTTPS deployment and Auth0. Each user signs in with Auth0, then registers their own Overleaf Git token through a separate trusted settings page. Never paste an Overleaf token into a chat.
+
+```bash
+docker build -t mcp-overleaf .
+docker run --rm -p 3000:3000 --env-file .env -v mcp-overleaf-data:/data mcp-overleaf
+```
+
+In ChatGPT, open **Plugins → Add custom MCP server**, enter `https://<your-domain>/mcp`, and select OAuth. See the [remote MCP + Auth0 guide](docs/remote-auth0.md) for Auth0 setup, environment variables, the credential-registration API, and production notes.
 
 ## See it in action
 
@@ -214,6 +249,9 @@ Git mode uses an official, documented integration, so it is the safer choice. Ev
 | `OVERLEAF_GIT_URL` | `https://git.overleaf.com` | Git bridge URL. For Server Pro use `https://<your-site>/git` |
 | `OVERLEAF_MCP_CACHE_DIR` | `~/.mcp-overleaf` | Where project copies and PDFs are kept |
 | `OVERLEAF_GIT_AUTHOR_NAME` / `_EMAIL` | `Overleaf MCP` | Commit author |
+| `MCP_PUBLIC_URL` | | Public HTTPS origin for remote MCP (without `/mcp`) |
+| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | | Auth0 settings for remote MCP users |
+| `OVERLEAF_CREDENTIALS_KEY` | | Base64 32-byte key that encrypts per-user Git tokens |
 
 ## How it works
 
@@ -254,7 +292,6 @@ npm run inspect
 - Reviewing tracked changes (accept / reject)
 - Uploading images and other binary files
 - Diffs and history
-- A remote (HTTP) transport, for ChatGPT
 
 Contributions are welcome.
 
