@@ -27,7 +27,7 @@ import {
 import { ProjectStore, listFiles, readAllText, readText, safeJoin } from "./project.js";
 import { OverleafWeb, type CompileResult } from "./web.js";
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 
 /**
  * Build an isolated MCP server for one credential set. The HTTP entrypoint calls
