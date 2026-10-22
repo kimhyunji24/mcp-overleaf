@@ -1,8 +1,36 @@
 # mcp-overleaf
 
-[English](README.md) | **한국어**
+**한국어** | [English](README.md)
 
-Claude, Cursor 같은 MCP 클라이언트에서 Overleaf LaTeX 프로젝트를 **읽고, 고치고, 컴파일하고, 리뷰**할 수 있게 해 주는 [MCP](https://modelcontextprotocol.io) 서버입니다. **Markdown으로 쓰면 LaTeX로 바꿔서 Overleaf에 올려 줍니다.**
+생각은 Markdown으로. 논문은 Overleaf에.
+
+읽고 · 고치고 · 컴파일하고 · 리뷰한다. AI 에이전트가 LaTeX 프로젝트를 망가뜨리지 않고 앞으로 보냅니다.
+
+---
+
+서론 한 문장을 고치려는데, 에이전트가 프로젝트 전체를 새로 쓰고 프리앰블을 지운 적 있나요?
+
+With mcp-overleaf:
+
+```text
+“방법 섹션의 마지막 문단을 이 Markdown으로 바꾸고, 컴파일 오류도 확인해 줘.”
+```
+
+섹션을 찾아 바꾸고, 필요한 LaTeX를 만들고, Overleaf에 저장합니다. Git으로 쓴 변경에는 커밋도 남습니다.
+
+mcp-overleaf는 Overleaf를 AI 에이전트 안으로 가져옵니다.
+
+## 지금 할 수 있는 일
+
+Claude Code, Claude Desktop, Cursor와 표준 MCP 클라이언트에서 바로 동작합니다. ChatGPT와 Codex에서는 Auth0로 로그인하는 원격 MCP(Streamable HTTP, 실험 기능)로 연결할 수 있습니다.
+
+| 하고 싶은 일 | 도구 |
+|---|---|
+| Markdown 초안을 LaTeX로 넣기 | `write_markdown` |
+| 프로젝트와 파일 살펴보기 | `list_projects`, `list_files`, `read_file`, `get_outline`, `read_section` |
+| 파일을 안전하게 고치기 | `edit_file`, `write_file`, `move_file`, `delete_file` |
+| 컴파일·PDF·리뷰 댓글 다루기 | `compile`, `download_pdf`, `get_comments`, `add_comment`, `reply_comment`, `resolve_comment` |
+| 한국어 논문 준비하기 | `setup_paper_language` |
 
 > **비공식 도구입니다.** mcp-overleaf는 독립 오픈소스 프로젝트이며 Overleaf나 Digital Science와 관련이 없고, 그들의 승인이나 지원을 받지 않습니다. "Overleaf"라는 이름은 이 도구가 무엇과 함께 동작하는지 설명하는 데에만 씁니다. 사용할 때 [Overleaf 이용약관과 이용 정책(Acceptable Use Policy)](https://www.overleaf.com/legal)을 지키는 것은 사용자 책임입니다.
 
@@ -143,6 +171,17 @@ claude mcp add overleaf -e OVERLEAF_GIT_TOKEN=olp_... -e OVERLEAF_LANG=ko -- npx
 
 Windows에서 클라이언트가 `npx`를 찾지 못하면 `"command": "cmd"`, `"args": ["/c", "npx", "-y", "mcp-overleaf"]`를 쓰세요.
 
+### ChatGPT / Codex (원격 MCP, 실험 기능)
+
+공개 HTTPS 서버와 Auth0가 필요합니다. 각 사용자는 Auth0로 로그인한 뒤 자신의 Overleaf Git 토큰을 별도의 신뢰할 수 있는 설정 화면에서 등록합니다. 토큰을 채팅에 붙여 넣지 마세요.
+
+```bash
+docker build -t mcp-overleaf .
+docker run --rm -p 3000:3000 --env-file .env -v mcp-overleaf-data:/data mcp-overleaf
+```
+
+ChatGPT에서는 **Plugins → Add custom MCP server**에서 `https://<도메인>/mcp`를 입력하고 OAuth를 선택합니다. Auth0 구성, 환경변수, 토큰 등록 API와 운영상 주의사항은 [원격 MCP + Auth0 가이드](docs/remote-auth0.md)를 보세요.
+
 ### 전체 설정
 
 | 변수 | 기본값 | |
@@ -156,6 +195,9 @@ Windows에서 클라이언트가 `npx`를 찾지 못하면 `"command": "cmd"`, `
 | `OVERLEAF_GIT_URL` | `https://git.overleaf.com` | Git 브리지 주소. Server Pro는 `https://<사이트>/git` |
 | `OVERLEAF_MCP_CACHE_DIR` | `~/.mcp-overleaf` | 프로젝트 사본과 PDF를 저장할 폴더 |
 | `OVERLEAF_GIT_AUTHOR_NAME` / `_EMAIL` | `Overleaf MCP` | 커밋 작성자 |
+| `MCP_PUBLIC_URL` | | 원격 MCP의 공개 HTTPS origin (`/mcp` 제외) |
+| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | | 원격 MCP 사용자 인증용 Auth0 설정 |
+| `OVERLEAF_CREDENTIALS_KEY` | | 사용자별 Git 토큰 암호화용 base64 32-byte 키 |
 
 ## 동작 방식
 
